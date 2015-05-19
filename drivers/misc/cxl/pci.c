@@ -474,13 +474,13 @@ static int setup_cxl_bars(struct pci_dev *dev)
 }
 
 /* pciex node: ibm,opal-m64-window = <0x3d058 0x0 0x3d058 0x0 0x8 0x0>; */
-static int switch_card_to_cxl(struct pci_dev *dev)
+static int switch_card_cxl_mode(struct pci_dev *dev, bool enable)
 {
 	int vsec;
 	u8 val;
 	int rc;
 
-	dev_info(&dev->dev, "switch card to CXL\n");
+	dev_info(&dev->dev, "switch card to %sCXL mode\n", enable ? "": "non-");
 
 	if (!(vsec = find_cxl_vsec(dev))) {
 		dev_err(&dev->dev, "ABORTING: CXL VSEC not found!\n");
@@ -491,8 +491,13 @@ static int switch_card_to_cxl(struct pci_dev *dev)
 		dev_err(&dev->dev, "failed to read current mode control: %i", rc);
 		return rc;
 	}
-	val &= ~CXL_VSEC_PROTOCOL_MASK;
-	val |= CXL_VSEC_PROTOCOL_256TB | CXL_VSEC_PROTOCOL_ENABLE;
+	if (enable) {
+		val &= ~CXL_VSEC_PROTOCOL_MASK;
+		val |= CXL_VSEC_PROTOCOL_256TB | CXL_VSEC_PROTOCOL_ENABLE;
+	} else {
+		val ^= CXL_VSEC_PROTOCOL_ENABLE;
+	}
+
 	if ((rc = CXL_WRITE_VSEC_MODE_CONTROL(dev, vsec, val))) {
 		dev_err(&dev->dev, "failed to enable CXL protocol: %i", rc);
 		return rc;
@@ -1052,11 +1057,11 @@ static struct cxl *cxl_init_adapter(struct pci_dev *dev)
 	if ((rc = setup_cxl_bars(dev)))
 		goto err1;
 
-	if ((rc = switch_card_to_cxl(dev)))
+	if ((rc = switch_card_cxl_mode(dev, true)))
 		goto err1;
 
 	if ((rc = cxl_alloc_adapter_nr(adapter)))
-		goto err1;
+		goto err_nocxl;
 
 	if ((rc = dev_set_name(&adapter->dev, "card%i", adapter->adapter_num)))
 		goto err2;
@@ -1109,6 +1114,10 @@ err3:
 	cxl_unmap_adapter_regs(adapter);
 err2:
 	cxl_remove_adapter_nr(adapter);
+
+err_nocxl:
+	switch_card_cxl_mode(dev, false);
+
 err1:
 	if (free)
 		kfree(adapter);
@@ -1127,6 +1136,7 @@ static void cxl_remove_adapter(struct cxl *adapter)
 	cxl_unmap_adapter_regs(adapter);
 	cxl_remove_adapter_nr(adapter);
 
+	switch_card_cxl_mode(pdev, false);
 	device_unregister(&adapter->dev);
 
 	pci_release_region(pdev, 0);

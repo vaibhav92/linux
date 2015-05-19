@@ -187,6 +187,28 @@ int cxl_afu_select_best_mode(struct cxl_afu *afu)
 	return 0;
 }
 
+/* /\*  */
+/*  * Called during kexec or cxl unload. Calls driver detach on all the capi cards */
+/*  * which in return call device remove and resets the card to non-cxl mode  */
+/*  *\/ */
+/* static void cxl_detach_all_adapters(void) */
+/* { */
+/*   	struct cxl *adapter; */
+/* 	int card = 0; */
+
+/* 	pr_devel("%s called\n", __func__); */
+
+/* 	spin_lock(&adapter_idr_lock); */
+/* 	adapter = (struct cxl *) idr_get_next(&cxl_adapter_idr, &card); */
+/* 	while (adapter != NULL) { */
+/* 		pr_info("Detaching card %d\n", adapter->adapter_num); */
+/* 		device_release_driver(&adapter->dev); */
+/* 		card = 0; */
+/* 		adapter = (struct cxl *) idr_get_next(&cxl_adapter_idr, &card); */
+/* 	} */
+/* 	spin_unlock(&adapter_idr_lock); */
+/* } */
+
 static int __init init_cxl(void)
 {
 	int rc = 0;
