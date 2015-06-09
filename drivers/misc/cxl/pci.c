@@ -495,7 +495,7 @@ static int switch_card_cxl_mode(struct pci_dev *dev, bool enable)
 		val &= ~CXL_VSEC_PROTOCOL_MASK;
 		val |= CXL_VSEC_PROTOCOL_256TB | CXL_VSEC_PROTOCOL_ENABLE;
 	} else {
-		val ^= CXL_VSEC_PROTOCOL_ENABLE;
+		val &= ~CXL_VSEC_PROTOCOL_MASK;
 	}
 
 	if ((rc = CXL_WRITE_VSEC_MODE_CONTROL(dev, vsec, val))) {
@@ -1133,10 +1133,18 @@ static void cxl_remove_adapter(struct cxl *adapter)
 	cxl_sysfs_adapter_remove(adapter);
 	cxl_debugfs_adapter_remove(adapter);
 	cxl_release_psl_err_irq(adapter);
+
+	switch_card_cxl_mode(pdev, false);
+
+	/* Disable snoop on the bus */
+	pnv_phb_to_cxl_mode(pdev, OPAL_PHB_CAPI_MODE_SNOOP_OFF);
+
+	/* Switch card back to PCIe mode */
+	pnv_phb_to_cxl_mode(pdev, OPAL_PHB_CAPI_MODE_PCIE);
+
 	cxl_unmap_adapter_regs(adapter);
 	cxl_remove_adapter_nr(adapter);
 
-	switch_card_cxl_mode(pdev, false);
 	device_unregister(&adapter->dev);
 
 	pci_release_region(pdev, 0);
