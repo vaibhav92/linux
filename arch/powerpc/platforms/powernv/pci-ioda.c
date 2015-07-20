@@ -2520,7 +2520,10 @@ int pnv_phb_to_cxl_mode(struct pci_dev *dev, uint64_t mode)
 	if (!pe)
 		return -ENODEV;
 
-	pe_info(pe, "Switching PHB to CXL\n");
+	if (mode & 0x1)
+		pe_info(pe, "Switching PHB to CXL\n");
+	else
+		pe_info(pe, "Switching CXL to PCIe\n");
 
 	rc = opal_pci_set_phb_cxl_mode(phb->opal_id, mode, pe->pe_number);
 	if (rc)

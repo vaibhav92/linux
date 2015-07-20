@@ -1134,7 +1134,6 @@ static void cxl_remove_adapter(struct cxl *adapter)
 	cxl_debugfs_adapter_remove(adapter);
 	cxl_release_psl_err_irq(adapter);
 
-	switch_card_cxl_mode(pdev, false);
 	cxl_unmap_adapter_regs(adapter);
 
 	/* Disable snoop on the bus */
@@ -1142,6 +1141,9 @@ static void cxl_remove_adapter(struct cxl *adapter)
 
 	/* Switch card back to PCIe mode */
 	pnv_phb_to_cxl_mode(pdev, OPAL_PHB_CAPI_MODE_PCIE);
+
+	/* reset the vsec */
+	switch_card_cxl_mode(pdev, false);
 
 	cxl_remove_adapter_nr(adapter);
 	

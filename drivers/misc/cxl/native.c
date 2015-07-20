@@ -102,6 +102,7 @@ int cxl_psl_purge(struct cxl_afu *afu)
 	trace_cxl_psl_ctrl(afu, CXL_PSL_SCNTL_An_Pc);
 
 	pr_devel("PSL purge request\n");
+	pr_info("PSL purge request\n");
 
 	if ((AFU_Cntl & CXL_AFU_Cntl_An_ES_MASK) != CXL_AFU_Cntl_An_ES_Disabled) {
 		WARN(1, "psl_purge request while AFU not disabled!\n");
