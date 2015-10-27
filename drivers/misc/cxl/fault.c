@@ -172,8 +172,9 @@ void cxl_handle_fault(struct work_struct *fault_work)
 		container_of(fault_work, struct cxl_context, fault_work);
 	u64 dsisr = ctx->dsisr;
 	u64 dar = ctx->dar;
-	struct task_struct *task = NULL;
+	struct task_struct *task = NULL, *next_task;
 	struct mm_struct *mm = NULL;
+	int old_pid;
 
 	if (cxl_p2n_read(ctx->afu, CXL_PSL_DSISR_An) != dsisr ||
 	    cxl_p2n_read(ctx->afu, CXL_PSL_DAR_An) != dar ||
@@ -195,18 +196,73 @@ void cxl_handle_fault(struct work_struct *fault_work)
 		"DSISR: %#llx DAR: %#llx\n", ctx->pe, dsisr, dar);
 
 	if (!ctx->kernel) {
-		if (!(task = get_pid_task(ctx->pid, PIDTYPE_PID))) {
-			pr_devel("cxl_handle_fault unable to get task %i\n",
-				 pid_nr(ctx->pid));
-			cxl_ack_ae(ctx);
-			return;
+
+		task = get_pid_task(ctx->pid, PIDTYPE_PID);
+		if (task != NULL && pid_alive(task))
+			mm = get_task_mm(task);
+
+		/*
+		 * The thread group leader exited so find the next
+		 * thread in the task group which shared the same
+		 * mm_struct
+		 */
+		if (unlikely(task != NULL && mm == NULL)) {
+
+			rcu_read_lock();
+
+			old_pid = pid_nr(ctx->pid);
+			next_task = task;
+			/* find the next non-zombie task in the task group */
+			while (next_task &&
+			      (next_task->exit_state == EXIT_DEAD ||
+			       next_task->exit_state == EXIT_ZOMBIE)) {
+
+				next_task = next_thread(next_task);
+				/*
+				 * if we get a thread group leader than
+				 * we have completed a loop in the task
+				 * group thread list.
+				 */
+				if (thread_group_leader(next_task)) {
+					next_task = NULL;
+					break;
+				}
+			}
+
+			/* release the task struct and the pid
+			 * as we will be using another one now.
+			 */
+			put_task_struct(task);
+			put_pid(ctx->pid);
+
+			if (next_task) {
+				get_task_struct(next_task);
+				task = next_task;
+				ctx->pid = get_task_pid(task, PIDTYPE_PID);
+			} else {
+				task = NULL;
+				ctx->pid = NULL;
+			}
+			rcu_read_unlock();
+
+			/* if a new task found then get the new mm-struct */
+			if (task != NULL) {
+				mm = get_task_mm(task);
+				pr_devel("%s:pe=%i switch pid %i->%i\n",
+				       __func__, ctx->pe, old_pid,
+				       pid_nr(ctx->pid));
+			}
 		}
-		if (!(mm = get_task_mm(task))) {
-			pr_devel("cxl_handle_fault unable to get mm %i\n",
-				 pid_nr(ctx->pid));
+
+		/* indicates all the thread in task group have exited */
+		if (task == NULL || mm == NULL) {
+			pr_devel("%s: unable to get %s for pe:%i\n",
+			       __func__, (task ? "task":"mm"), ctx->pe);
 			cxl_ack_ae(ctx);
 			goto out;
 		}
+
+		pr_info("Handled page fault for pe: %i\n", ctx->pe);
 	}
 
 	if (dsisr & CXL_PSL_DSISR_An_DS)
