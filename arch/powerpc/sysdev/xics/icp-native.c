@@ -144,7 +144,23 @@ static unsigned int icp_native_get_irq(void)
 /* Have icp ack and mask a spurious/floating irq */
 void icp_native_ack_bad_irq(unsigned int virq)
 {
-	pr_warn("ppc: bad virq=%02x\n", virq);
+	/* Get the hwirq pushed to the cppr stack */
+	unsigned int hw_irq = xics_cppr_top_vec();
+
+	pr_warn("ppc: Acking bad virq=0x%02x hw_irq=0x%02x\n", virq, hw_irq);
+
+	if (hw_irq == XICS_IRQ_SPURIOUS) {
+		xics_pop_cppr();
+		return;
+	}
+
+	/* Ask xics to mask this irq */
+	if (hw_irq != XICS_IPI)
+		xics_mask_unknown_vec(hw_irq);
+
+	/* get this interrupt acked via xirr */
+	iosync();
+	icp_native_set_xirr((xics_pop_cppr() << 24) | hw_irq);
 }
 
 

@@ -92,7 +92,7 @@ extern unsigned int xics_interrupt_server_size;
 extern struct irq_domain *xics_host;
 
 struct xics_cppr {
-	unsigned char stack[MAX_NUM_PRIORITIES];
+	unsigned int stack[MAX_NUM_PRIORITIES];
 	int index;
 };
 
@@ -106,9 +106,10 @@ static inline void xics_push_cppr(unsigned int vec)
 		return;
 
 	if (vec == XICS_IPI)
-		os_cppr->stack[++os_cppr->index] = IPI_PRIORITY;
+		os_cppr->stack[++os_cppr->index] = IPI_PRIORITY | (vec << 8);
 	else
-		os_cppr->stack[++os_cppr->index] = DEFAULT_PRIORITY;
+		os_cppr->stack[++os_cppr->index] = DEFAULT_PRIORITY |
+			(vec << 8);
 }
 
 static inline unsigned char xics_pop_cppr(void)
@@ -118,7 +119,7 @@ static inline unsigned char xics_pop_cppr(void)
 	if (WARN_ON(os_cppr->index < 1))
 		return LOWEST_PRIORITY;
 
-	return os_cppr->stack[--os_cppr->index];
+	return (unsigned char) (os_cppr->stack[--os_cppr->index]);
 }
 
 static inline void xics_set_base_cppr(unsigned char cppr)
@@ -137,7 +138,15 @@ static inline unsigned char xics_cppr_top(void)
 {
 	struct xics_cppr *os_cppr = this_cpu_ptr(&xics_cppr);
 	
-	return os_cppr->stack[os_cppr->index];
+	return (unsigned char) (os_cppr->stack[os_cppr->index]);
+}
+
+/* Peek the interrupt vector pushed with cppr */
+static inline unsigned int xics_cppr_top_vec(void)
+{
+	struct xics_cppr *os_cppr = this_cpu_ptr(&xics_cppr);
+
+	return os_cppr->stack[os_cppr->index] >> 8;
 }
 
 DECLARE_PER_CPU_SHARED_ALIGNED(unsigned long, xics_ipi_message);
