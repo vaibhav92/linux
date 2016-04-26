@@ -100,6 +100,8 @@ struct machdep_calls {
 
 	/* Return an irq, or NO_IRQ to indicate there are none pending. */
 	unsigned int	(*get_irq)(void);
+	/* Acknowledge a spurious irq */
+	void		(*ack_bad_irq)(unsigned int virq);
 
 	/* PCI stuff */
 	/* Called after allocating resources */

@@ -4,6 +4,8 @@
 #include <linux/threads.h>
 #include <linux/irq.h>
 
+#include <asm/machdep.h>
+
 typedef struct {
 	unsigned int __softirq_pending;
 	unsigned int timer_irqs_event;
@@ -31,6 +33,17 @@ DECLARE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
 static inline void ack_bad_irq(unsigned int irq)
 {
 	printk(KERN_CRIT "unexpected IRQ trap at vector %02x\n", irq);
+
+	if (ppc_md.ack_bad_irq)
+		ppc_md.ack_bad_irq(irq);
+}
+
+static inline void eoi_bad_irq(unsigned int irq)
+{
+	pr_crit("unexpected IRQ eoi at vector %02x\n", irq);
+
+	if (ppc_md.ack_bad_irq)
+		ppc_md.ack_bad_irq(irq);
 }
 
 extern u64 arch_irq_stat_cpu(unsigned int cpu);

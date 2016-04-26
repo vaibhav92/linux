@@ -141,6 +141,13 @@ static unsigned int icp_native_get_irq(void)
 	return NO_IRQ;
 }
 
+/* Have icp ack and mask a spurious/floating irq */
+void icp_native_ack_bad_irq(unsigned int virq)
+{
+	pr_warn("ppc: bad virq=%02x\n", virq);
+}
+
+
 #ifdef CONFIG_SMP
 
 static void icp_native_cause_ipi(int cpu, unsigned long data)
@@ -339,6 +346,7 @@ static const struct icp_ops icp_native_ops = {
 	.ipi_action	= icp_native_ipi_action,
 	.cause_ipi	= icp_native_cause_ipi,
 #endif
+	.ack_bad_irq    = icp_native_ack_bad_irq,
 };
 
 int __init icp_native_init(void)
