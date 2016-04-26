@@ -18,4 +18,11 @@ static inline void ack_bad_irq(unsigned int irq)
 }
 #endif
 
+#ifndef eoi_bad_irq
+static inline void eoi_bad_irq(unsigned int irq)
+{
+	pr_crit("unexpected IRQ eoi for vector %02x\n", irq);
+}
+#endif
+
 #endif /* __ASM_GENERIC_HARDIRQ_H */

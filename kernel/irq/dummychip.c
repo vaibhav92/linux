@@ -23,6 +23,17 @@ static void ack_bad(struct irq_data *data)
 }
 
 /*
+ * Signal eoi to a spurious hw irq in arch specific manner.
+ */
+static void eoi_bad(struct irq_data *data)
+{
+	struct irq_desc *desc = irq_data_to_desc(data);
+
+	print_irq_desc(data->irq, desc);
+	eoi_bad_irq(data->irq);
+}
+
+/*
  * NOP functions
  */
 static void noop(struct irq_data *data) { }
@@ -42,6 +53,7 @@ struct irq_chip no_irq_chip = {
 	.irq_enable	= noop,
 	.irq_disable	= noop,
 	.irq_ack	= ack_bad,
+	.irq_eoi	= eoi_bad,
 	.flags		= IRQCHIP_SKIP_SET_WAKE,
 };
 
