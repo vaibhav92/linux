@@ -53,6 +53,7 @@ struct icp_ops {
 	void (*cause_ipi)(int cpu, unsigned long data);
 	irq_handler_t ipi_action;
 #endif
+	void (*ack_bad_irq)(unsigned int);
 };
 
 extern const struct icp_ops *icp_ops;
