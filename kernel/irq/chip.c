@@ -524,9 +524,11 @@ static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
  */
 void handle_fasteoi_irq(struct irq_desc *desc)
 {
-	struct irq_chip *chip = desc->irq_data.chip;
+	struct irq_chip *chip;
 
 	raw_spin_lock(&desc->lock);
+
+	chip = desc->irq_data.chip;
 
 	if (!irq_may_run(desc))
 		goto out;
