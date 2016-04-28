@@ -823,8 +823,10 @@ void
 irq_set_chip_and_handler_name(unsigned int irq, struct irq_chip *chip,
 			      irq_flow_handler_t handle, const char *name)
 {
+  	__irq_set_handler(irq, handle, 0, name);
+	synchronize_rcu();
 	irq_set_chip(irq, chip);
-	__irq_set_handler(irq, handle, 0, name);
+
 }
 EXPORT_SYMBOL_GPL(irq_set_chip_and_handler_name);
 

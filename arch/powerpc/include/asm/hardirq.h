@@ -43,6 +43,7 @@ static inline void ack_bad_irq(unsigned int irq)
 static inline void eoi_bad_irq(unsigned int irq)
 {
 	pr_crit("unexpected IRQ eoi at vector %02x\n", irq);
+	BUG();
 
 	if (ppc_md.ack_bad_irq)
 		ppc_md.ack_bad_irq(irq);
