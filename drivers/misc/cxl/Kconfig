@@ -33,3 +33,17 @@ config CXL
 	  CAPI adapters are found in POWER8 based systems.
 
 	  If unsure, say N.
+
+config CXL_KVM
+       bool "Enable KVM Guest support"
+       default y
+       select SPAPR_TCE_IOMMU
+       select VFIO
+       select KVM_VFIO
+       select VFIO_PCI
+       depends on CXL && KVM
+       help
+	Provides support for pci passthrough for KVM guests.
+	CAPI adapters are found in POWER8 based systems.
+	if unsure, say N.
+
