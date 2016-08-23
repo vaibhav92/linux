@@ -7,6 +7,7 @@ cxl-y				+= vphb.o phb.o api.o
 cxl-$(CONFIG_PPC_PSERIES)	+= flash.o guest.o of.o hcalls.o
 obj-$(CONFIG_CXL)		+= cxl.o
 obj-$(CONFIG_CXL_BASE)		+= base.o
-
+obj-$(CONFIG_CXL_KVM)		+= cxl-kvm.o
+cxl-kvm-y			+= kvm-main.o
 # For tracepoints to include our trace.h from tracepoint infrastructure:
 CFLAGS_trace.o := -I$(src)

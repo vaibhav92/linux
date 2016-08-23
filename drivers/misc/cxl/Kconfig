@@ -36,3 +36,18 @@ config CXL_BIMODAL
 	help
 	  Select this option to enable support for bi-modal CAPI cards, such as
 	  the Mellanox CX-4.
+
+
+config CXL_KVM
+       tristate "Enable KVM Guest support"
+       default y
+       select SPAPR_TCE_IOMMU
+       select VFIO
+       select KVM_VFIO
+       select VFIO_PCI
+       depends on CXL && KVM
+       help
+	Provides support for pci passthrough for KVM guests.
+	CAPI adapters are found in POWER8 based systems.
+	if unsure, say N.
+
