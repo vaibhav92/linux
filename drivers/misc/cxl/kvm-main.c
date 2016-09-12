@@ -79,7 +79,7 @@ static int walk_bus(struct pci_dev *dev, void *data)
 {
 
 	if (dev->vendor == PCI_VENDOR_ID_IBM &&  dev->class==0x120000) {
-		pr_info("%d: %p\n",index,dev);
+		pr_info("%p\n",dev);
 		return 1;
 	}
 
