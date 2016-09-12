@@ -75,15 +75,14 @@
 /* 	return 0; */
 /* } */
 
-static int index =0;
 static int walk_bus(struct pci_dev *dev, void *data)
 {
-	index++;
-	if (pci_is_bridge(dev)) {
+
+	if (dev->vendor == PCI_VENDOR_ID_IBM &&  dev->class==0x120000) {
 		pr_info("%d: %p\n",index,dev);
-	} else {
-		pr_info("%d: Bridge %p\n",index,dev);
+		return 1;
 	}
+
 	return 0;
 }
 

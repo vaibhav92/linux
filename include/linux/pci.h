@@ -508,7 +508,7 @@ static inline bool pci_is_root_bus(struct pci_bus *pbus)
  * @dev: PCI device
  *
  * Return true if the PCI device is bridge whether it has subordinate
- * or not.
+ * or not.ggg
  */
 static inline bool pci_is_bridge(struct pci_dev *dev)
 {
