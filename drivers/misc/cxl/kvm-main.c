@@ -79,8 +79,12 @@ static int index =0;
 static int walk_bus(struct pci_dev *dev, void *data)
 {
 	index++;
-	pr_info("%d: %p\n",index,dev);
-  return 0;
+	if (pci_is_bridge(dev)) {
+		pr_info("%d: %p\n",index,dev);
+	} else {
+		pr_info("%d: Bridge %p\n",index,dev);
+	}
+	return 0;
 }
 
 static int __init init_cxl_kvm(void)
