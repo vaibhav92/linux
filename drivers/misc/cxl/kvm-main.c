@@ -75,25 +75,27 @@
 /* 	return 0; */
 /* } */
 
+static struct pci_dev *dev_cxl;
+
+
 static int walk_bus(struct pci_dev *dev, void *data)
 {
-
 	if (dev->vendor == PCI_VENDOR_ID_IBM &&  dev->class==0x120000) {
 		pr_info("%p\n",dev);
+		dev_cxl = 
 		return 1;
 	}
-
 	return 0;
 }
 
 static int __init init_cxl_kvm(void)
 {
-  struct pci_bus *pbus;
-  pr_info("Module loaded");
-  
-  list_for_each_entry(pbus, &pci_root_buses, node) {
-	  pci_walk_bus(pbus, walk_bus, NULL);
-  }
+
+	struct pci_dev cxl_dev = pci_get_device(PCI_VENDOR_ID_IBM, 0x4350);
+
+
+		pr_info("%p\n",dev);
+	
   return 0;
 }
 
