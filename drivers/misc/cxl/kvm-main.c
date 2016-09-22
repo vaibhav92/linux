@@ -12,8 +12,10 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <asm/bug.h>
 
 
+static struct pci_dev *cxl_dev;
 
 static int cxl_dma_set_mask(struct pci_dev *pdev, u64 dma_mask)
 {
@@ -121,10 +123,15 @@ static int cxl_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 	//pr_info("Tag %s, %s:%d\n", __FUNCTION__, __FILE__, __LINE__);
 	pr_info("%s, Devfn=%d offset=%d len=%d \n", __FUNCTION__, devfn, offset, len);
 
-
 	if (devfn)
-		return PCIBIOS_DEVICE_NOT_FOUND;
-	WARN(1, "Test");
+		return PCIBIOS_FUNC_NOT_SUPPORTED;
+	if (offset == 0) {
+		*val = PCI_VENDOR_ID_IBM;
+		return PCIBIOS_SUCCESSFUL;
+	}
+	WARN_ON(1);
+
+	
 	/* int rc, record; */
 	/* struct cxl_afu *afu; */
 	/* u8 val8; */
@@ -155,7 +162,7 @@ static int cxl_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 	/* if (rc) */
 	/* 	return PCIBIOS_DEVICE_NOT_FOUND; */
 
-	return PCIBIOS_SUCCESSFUL;
+	return PCIBIOS_DEVICE_NOT_FOUND;
 }
 
 static int cxl_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
@@ -163,6 +170,11 @@ static int cxl_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 {
 
 	pr_info("Tag %s, %s:%d\n", __FUNCTION__, __FILE__, __LINE__);
+	if (devfn) {
+		return PCIBIOS_DEVICE_NOT_FOUND;
+	}
+		
+
 	/* int rc, record; */
 	/* struct cxl_afu *afu; */
 
@@ -214,7 +226,6 @@ static struct pci_controller_ops cxl_pci_controller_ops =
 
 static int __init init_cxl_kvm(void)
 {
-  	struct pci_dev *cxl_dev;
 	struct device * parent;
 	struct pci_controller *phb;
 	struct device_node *vphb_dn;
