@@ -122,14 +122,11 @@ static int cxl_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 {
 	//pr_info("Tag %s, %s:%d\n", __FUNCTION__, __FILE__, __LINE__);
 	pr_info("%s, Devfn=%d offset=%d len=%d \n", __FUNCTION__, devfn, offset, len);
-
+	
 	if (devfn)
 		return PCIBIOS_FUNC_NOT_SUPPORTED;
-	if (offset == 0) {
-		*val = PCI_VENDOR_ID_IBM;
-		return PCIBIOS_SUCCESSFUL;
-	}
-	WARN_ON(1);
+	
+	return pci_generic_config_read(cxl_dev->bus, cxl_dev->devfn, offset, len, val);
 
 	
 	/* int rc, record; */
@@ -168,11 +165,12 @@ static int cxl_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 static int cxl_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 				 int offset, int len, u32 val)
 {
-
-	pr_info("Tag %s, %s:%d\n", __FUNCTION__, __FILE__, __LINE__);
-	if (devfn) {
-		return PCIBIOS_DEVICE_NOT_FOUND;
-	}
+	pr_info("%s, Devfn=%d offset=%d len=%d \n", __FUNCTION__, devfn, offset, len);
+	
+	if (devfn)
+		return PCIBIOS_FUNC_NOT_SUPPORTED;
+	
+	return pci_generic_config_write(cxl_dev->bus, cxl_dev->devfn, offset, len, val);
 		
 
 	/* int rc, record; */
@@ -197,7 +195,7 @@ static int cxl_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 	/* } */
 
 	/* if (rc) */
-		return PCIBIOS_SET_FAILED;
+		/* return PCIBIOS_SET_FAILED; */
 
 	/* return PCIBIOS_SUCCESSFUL; */
 }
