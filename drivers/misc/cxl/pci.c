@@ -1496,8 +1496,6 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
 
-	/* Release the context lock as adapter is configured */
-	cxl_adapter_context_unlock(adapter);
 	return 0;
 
 err:
@@ -1595,6 +1593,9 @@ static struct cxl *cxl_pci_init_adapter(struct pci_dev *dev)
 
 	if ((rc = cxl_sysfs_adapter_add(adapter)))
 		goto err_put1;
+
+	/* Release the context lock as adapter is configured */
+	cxl_adapter_context_unlock(adapter);
 
 	return adapter;
 
@@ -1894,7 +1895,15 @@ static pci_ers_result_t cxl_pci_error_detected(struct pci_dev *pdev,
 		cxl_context_detach_all(afu);
 		cxl_ops->afu_deactivate_mode(afu, afu->current_mode);
 		pci_deconfigure_afu(afu);
+
 	}
+
+	/* should take the context lock here */
+	if (cxl_adapter_context_lock(adapter) != 0)
+		dev_warn(&adapter->dev,
+			 "Couldn't take context lock with %d active-contexts\n",
+			 atomic_read(&adapter->contexts_num));
+
 	cxl_deconfigure_adapter(adapter);
 
 	return result;
@@ -1976,6 +1985,9 @@ static void cxl_pci_resume(struct pci_dev *pdev)
 	struct cxl_afu *afu;
 	struct pci_dev *afu_dev;
 	int i;
+
+	/* Unlock context activation for the adapter */
+	cxl_adapter_context_unlock(adapter);
 
 	/* Everything is back now. Drivers should restart work now.
 	 * This is not the place to be checking if everything came back up
