@@ -34,6 +34,7 @@
 enum {
 	DSM_PAPR_MIN =  0x10000,
 	DSM_PAPR_SCM_HEALTH,
+	DSM_PAPR_SCM_STATS,
 	DSM_PAPR_MAX,
 };
 
@@ -411,6 +412,51 @@ out:
 	return 0;
 }
 
+/* Fetch the DIMM stats and populate it in provided papr_scm package */
+static int papr_scm_get_stats(struct papr_scm_priv *p,
+			      struct nd_pkg_papr_scm *pkg)
+{
+	struct papr_scm_perf_stats *retbuffer;
+	int rc;
+	size_t copysize;
+
+	/* Return buffer for phyp where stats are written */
+	retbuffer = kzalloc(PAPR_SCM_MAX_PERF_STAT, GFP_KERNEL);
+
+	if (!retbuffer)
+		return -ENOMEM;
+
+	rc = drc_pmem_query_stats(p, retbuffer);
+	if (rc)
+		goto out;
+
+	/*
+	 * Parse the retbuffer, fetch the size returned and return the
+	 * first nd_size_out bytes back to userspce.
+	 */
+	pkg->hdr.nd_fw_size = be16_to_cpu(retbuffer->size);
+	copysize = min_t(__u32, pkg->hdr.nd_fw_size, pkg->hdr.nd_size_out);
+
+	memcpy(pkg->payload, retbuffer, copysize);
+
+	/* Verify if the returned buffer was copied completely */
+	if (pkg->hdr.nd_fw_size > copysize) {
+		rc = -ENOSPC;
+		goto out;
+	}
+
+out:
+	kfree(retbuffer);
+	/*
+	 * Put the error in out package and return success from function
+	 * so that errors if any are propogated back to userspace.
+	 */
+	pkg->cmd_status = rc;
+	dev_dbg(&p->pdev->dev, "%s completion code = %d\n", __func__, rc);
+
+	return 0;
+}
+
 int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 		unsigned int cmd, void *buf, unsigned int buf_len, int *cmd_rc)
 {
@@ -459,6 +505,11 @@ int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 	case DSM_PAPR_SCM_HEALTH:
 		call_pkg = (struct nd_pkg_papr_scm *) buf;
 		*cmd_rc = papr_scm_get_health(p, call_pkg);
+		break;
+
+	case DSM_PAPR_SCM_STATS:
+		call_pkg = (struct nd_pkg_papr_scm *) buf;
+		*cmd_rc = papr_scm_get_stats(p, call_pkg);
 		break;
 
 	default:
