@@ -22,6 +22,16 @@
 	 (1ul << ND_CMD_GET_CONFIG_DATA) | \
 	 (1ul << ND_CMD_SET_CONFIG_DATA))
 
+#define PAPR_SCM_MAX_PERF_STAT 4096
+
+/* Buffer layout returned by phyp when reporting drc perf stats */
+struct papr_scm_perf_stats {
+	uint8_t version;		/* Should be 0x01 */
+	uint8_t reserved1;
+	__be16 size;			/* Size of this struct in bytes */
+	uint8_t buffer[];		/* Performance matrics */
+} __packed;
+
 struct papr_scm_priv {
 	struct platform_device *pdev;
 	struct device_node *dn;
@@ -146,6 +156,25 @@ err_out:
 		 "Failed to query, trying an unbind followed by bind");
 	drc_pmem_unbind(p);
 	return drc_pmem_bind(p);
+}
+
+static int drc_pmem_query_stats(struct papr_scm_priv *p,
+				struct papr_scm_perf_stats *stats)
+{
+	unsigned long ret[PLPAR_HCALL_BUFSIZE];
+	int64_t rc;
+
+	if (!stats)
+		return -EINVAL;
+
+	rc = plpar_hcall(H_SCM_PERFORMANCE_STATS, ret, p->drc_index,
+			 __pa(stats));
+	if (rc != H_SUCCESS) {
+		dev_err(&p->pdev->dev,
+			 "Failed to query performance stats, Err:%lld\n", rc);
+		return -ENXIO;
+	} else
+		return 0;
 }
 
 static int drc_pmem_query_health(struct papr_scm_priv *p)
@@ -332,6 +361,32 @@ static inline int papr_scm_node(int node)
 	return min_node;
 }
 
+static ssize_t papr_stats_version_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct nvdimm *dimm = to_nvdimm(dev);
+	struct papr_scm_priv *p = nvdimm_provider_data(dimm);
+	struct papr_scm_perf_stats *retbuffer;
+	int rc;
+
+	/* Return buffer for phyp where stats are written */
+	retbuffer = kzalloc(PAPR_SCM_MAX_PERF_STAT, GFP_KERNEL);
+	if (!retbuffer)
+		return -ENOMEM;
+
+	rc = drc_pmem_query_stats(p, retbuffer);
+	if (rc)
+		goto out;
+	else
+		rc = sprintf(buf, "%d\n", retbuffer->version);
+
+out:
+	kfree(retbuffer);
+	return rc;
+
+}
+DEVICE_ATTR_RO(papr_stats_version);
+
 static ssize_t papr_health_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -353,6 +408,7 @@ DEVICE_ATTR_RO(papr_health);
 /* papr_scm specific dimm attributes */
 static struct attribute *papr_scm_nd_attributes[] = {
 	&dev_attr_papr_health.attr,
+	&dev_attr_papr_stats_version.attr,
 	NULL,
 };
 
