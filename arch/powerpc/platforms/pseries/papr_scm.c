@@ -39,6 +39,10 @@ struct papr_scm_priv {
 	struct resource res;
 	struct nd_region *region;
 	struct nd_interleave_set nd_set;
+
+	/* Health information for the dimm */
+	__be64 health_bitmap;
+	__be64 health_bitmap_valid;
 };
 
 static int drc_pmem_bind(struct papr_scm_priv *p)
@@ -144,6 +148,30 @@ err_out:
 	return drc_pmem_bind(p);
 }
 
+static int drc_pmem_query_health(struct papr_scm_priv *p)
+{
+	unsigned long ret[PLPAR_HCALL_BUFSIZE];
+	int64_t rc;
+
+	rc = plpar_hcall(H_SCM_HEALTH, ret, p->drc_index);
+	if (rc != H_SUCCESS) {
+		dev_err(&p->pdev->dev,
+			 "Failed to query health information, Err:%lld\n", rc);
+		return -ENXIO;
+	}
+
+	/* Store the retrieved health information in dimm platform data */
+
+	p->health_bitmap = ret[0];
+	p->health_bitmap_valid = ret[1];
+
+	dev_dbg(&p->pdev->dev,
+		"Queried dimm health info. Bitmap:0x%016llx Mask:0x%016llx\n",
+		be64_to_cpu(p->health_bitmap),
+		be64_to_cpu(p->health_bitmap_valid));
+
+	return 0;
+}
 
 static int papr_scm_meta_get(struct papr_scm_priv *p,
 			     struct nd_cmd_get_config_data_hdr *hdr)
@@ -304,6 +332,39 @@ static inline int papr_scm_node(int node)
 	return min_node;
 }
 
+static ssize_t papr_health_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct nvdimm *dimm = to_nvdimm(dev);
+	struct papr_scm_priv *p = nvdimm_provider_data(dimm);
+	int rc;
+
+	rc = drc_pmem_query_health(p);
+
+	if (rc)
+		return rc;
+	else
+		return sprintf(buf, "0x%016llX 0x%016llX\n",
+			       be64_to_cpu(p->health_bitmap),
+			       be64_to_cpu(p->health_bitmap_valid));
+}
+DEVICE_ATTR_RO(papr_health);
+
+/* papr_scm specific dimm attributes */
+static struct attribute *papr_scm_nd_attributes[] = {
+	&dev_attr_papr_health.attr,
+	NULL,
+};
+
+static struct attribute_group papr_scm_nd_attribute_group = {
+	.attrs = papr_scm_nd_attributes,
+};
+
+static const struct attribute_group *papr_scm_dimm_attr_groups[] = {
+	&papr_scm_nd_attribute_group,
+	NULL,
+};
+
 static int papr_scm_nvdimm_init(struct papr_scm_priv *p)
 {
 	struct device *dev = &p->pdev->dev;
@@ -330,8 +391,8 @@ static int papr_scm_nvdimm_init(struct papr_scm_priv *p)
 	dimm_flags = 0;
 	set_bit(NDD_ALIASING, &dimm_flags);
 
-	p->nvdimm = nvdimm_create(p->bus, p, NULL, dimm_flags,
-				  PAPR_SCM_DIMM_CMD_MASK, 0, NULL);
+	p->nvdimm = nvdimm_create(p->bus, p, papr_scm_dimm_attr_groups,
+				  dimm_flags, PAPR_SCM_DIMM_CMD_MASK, 0, NULL);
 	if (!p->nvdimm) {
 		dev_err(dev, "Error creating DIMM object for %pOF\n", p->dn);
 		goto err;
