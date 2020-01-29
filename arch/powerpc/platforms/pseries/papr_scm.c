@@ -436,6 +436,73 @@ static int is_cmd_valid(struct nvdimm *nvdimm, unsigned int cmd, void *buf,
 	return 0;
 }
 
+/* Fetch the DIMM health info and populate it in provided package. */
+static int papr_pdsm_health(struct papr_scm_priv *p,
+			    struct nd_pdsm_cmd_pkg *pkg)
+{
+	int rc;
+	struct nd_papr_pdsm_health health = { 0 };
+	u16 copysize = sizeof(struct nd_papr_pdsm_health);
+	u16 payload_size = pkg->hdr.nd_size_out - ND_PDSM_HDR_SIZE;
+
+	/* Ensure correct payload size that can hold struct nd_papr_pdsm_health */
+	if (payload_size != copysize) {
+		dev_dbg(&p->pdev->dev,
+			"Unexpected payload-size (%u). Expected (%u)",
+			pkg->hdr.nd_size_out, copysize);
+		rc = -ENOSPC;
+		goto out;
+	}
+
+	/* Ensure dimm health mutex is taken preventing concurrent access */
+	rc = mutex_lock_interruptible(&p->health_mutex);
+	if (rc)
+		goto out;
+
+	/* Always fetch upto date dimm health data ignoring cached values */
+	rc = __drc_pmem_query_health(p);
+	if (rc) {
+		mutex_unlock(&p->health_mutex);
+		goto out;
+	}
+
+	/* update health struct with various flags derived from health bitmap */
+	health = (struct nd_papr_pdsm_health) {
+		.extension_flags = 0,
+		.dimm_unarmed = !!(p->health_bitmap & PAPR_PMEM_UNARMED_MASK),
+		.dimm_bad_shutdown = !!(p->health_bitmap & PAPR_PMEM_BAD_SHUTDOWN_MASK),
+		.dimm_bad_restore = !!(p->health_bitmap & PAPR_PMEM_BAD_RESTORE_MASK),
+		.dimm_encrypted = !!(p->health_bitmap & PAPR_PMEM_ENCRYPTED),
+		.dimm_locked = !!(p->health_bitmap & PAPR_PMEM_SCRUBBED_AND_LOCKED),
+		.dimm_scrubbed = !!(p->health_bitmap & PAPR_PMEM_SCRUBBED_AND_LOCKED),
+		.dimm_health = PAPR_PDSM_DIMM_HEALTHY,
+	};
+
+	/* Update field dimm_health based on health_bitmap flags */
+	if (p->health_bitmap & PAPR_PMEM_HEALTH_FATAL)
+		health.dimm_health = PAPR_PDSM_DIMM_FATAL;
+	else if (p->health_bitmap & PAPR_PMEM_HEALTH_CRITICAL)
+		health.dimm_health = PAPR_PDSM_DIMM_CRITICAL;
+	else if (p->health_bitmap & PAPR_PMEM_HEALTH_UNHEALTHY)
+		health.dimm_health = PAPR_PDSM_DIMM_UNHEALTHY;
+
+	/* struct populated hence can release the mutex now */
+	mutex_unlock(&p->health_mutex);
+
+	dev_dbg(&p->pdev->dev, "Copying payload size=%u\n", copysize);
+
+	/* Copy the health struct to the payload */
+	memcpy(pdsm_cmd_to_payload(pkg), &health, copysize);
+
+	/* Update fw size including size of struct nd_pdsm_cmd_pkg fields */
+	pkg->hdr.nd_fw_size = copysize + ND_PDSM_HDR_SIZE;
+
+out:
+	dev_dbg(&p->pdev->dev, "completion code = %d\n", rc);
+
+	return rc;
+}
+
 /*
  * For a given pdsm request call an appropriate service function.
  * Returns errors if any while handling the pdsm command package.
@@ -449,6 +516,10 @@ static int papr_scm_service_pdsm(struct papr_scm_priv *p,
 
 	/* Call pdsm service function */
 	switch (pdsm) {
+	case PAPR_PDSM_HEALTH:
+		pkg->cmd_status = papr_pdsm_health(p, pkg);
+		break;
+
 	default:
 		dev_dbg(&p->pdev->dev, "PDSM[0x%x]: Unsupported PDSM request\n",
 			pdsm);
