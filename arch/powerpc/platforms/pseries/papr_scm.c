@@ -33,8 +33,15 @@
  */
 enum {
 	DSM_PAPR_MIN =  0x10000,
+	DSM_PAPR_SCM_HEALTH,
 	DSM_PAPR_MAX,
 };
+
+/* Struct as returned by kernel in response to PAPR_DSM_PAPR_SMART_HEALTH */
+struct papr_scm_ndctl_health {
+	__be64 health_bitmap;
+	__be64 health_bitmap_valid;
+} __packed;
 
 /* Payload expected with ND_CMD_CALL ioctl from libnvdimm */
 struct nd_pkg_papr_scm {
@@ -370,6 +377,40 @@ static int cmd_to_func(struct nvdimm *nvdimm, unsigned int cmd, void *buf,
 	return pkg->hdr.nd_command;
 }
 
+/* Fetch the DIMM health info and populate it in provided papr_scm package */
+static int papr_scm_get_health(struct papr_scm_priv *p,
+			       struct nd_pkg_papr_scm *pkg)
+{
+	int rc;
+	struct papr_scm_ndctl_health *health =
+		(struct papr_scm_ndctl_health *)pkg->payload;
+
+	pkg->hdr.nd_fw_size = sizeof(struct papr_scm_ndctl_health);
+
+	if (pkg->hdr.nd_size_out < sizeof(struct papr_scm_ndctl_health)) {
+		rc = -ENOSPC;
+		goto out;
+	}
+
+	rc = drc_pmem_query_health(p);
+	if (rc)
+		goto out;
+
+	/* Copy the health data to the payload */
+	health->health_bitmap = p->health_bitmap;
+	health->health_bitmap_valid = p->health_bitmap_valid;
+
+out:
+	/*
+	 * Put the error in out package and return success from function
+	 * so that errors if any are propogated back to userspace.
+	 */
+	pkg->cmd_status = rc;
+	dev_dbg(&p->pdev->dev, "%s completion code = %d\n", __func__, rc);
+
+	return 0;
+}
+
 int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 		unsigned int cmd, void *buf, unsigned int buf_len, int *cmd_rc)
 {
@@ -413,6 +454,11 @@ int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 		call_pkg = (struct nd_pkg_papr_scm *) buf;
 		call_pkg->cmd_status = -ENOENT;
 		*cmd_rc = 0;
+		break;
+
+	case DSM_PAPR_SCM_HEALTH:
+		call_pkg = (struct nd_pkg_papr_scm *) buf;
+		*cmd_rc = papr_scm_get_health(p, call_pkg);
 		break;
 
 	default:
