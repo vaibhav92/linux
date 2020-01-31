@@ -38,6 +38,43 @@ enum {
 	DSM_PAPR_MAX,
 };
 
+/* DIMM health bitmap bitmap indicators */
+/* SCM device is encrypted */
+#define ND_PAPR_SCM_DIMM_ENCRYPTED		(0x1ULL << 15)
+/* SCM device is unable to persist memory contents */
+#define ND_PAPR_SCM_DIMM_UNARMED		(0x1ULL << 7)
+/* SCM device failed to persist memory contents */
+#define ND_PAPR_SCM_DIMM_SHUTDOWN_DIRTY		(0x1ULL << 6)
+/* SCM device contents are persisted from previous IPL */
+#define ND_PAPR_SCM_DIMM_SHUTDOWN_CLEAN		(0x1ULL << 5)
+/* SCM device contents are not persisted from previous IPL */
+#define ND_PAPR_SCM_DIMM_EMPTY			(0x1ULL << 4)
+/* SCM device memory life remaining is critically low */
+#define ND_PAPR_SCM_DIMM_HEALTH_CRITICAL	(0x1ULL << 3)
+/* SCM device will be garded off next IPL due to failure */
+#define ND_PAPR_SCM_DIMM_HEALTH_FATAL		(0x1ULL << 2)
+/* SCM contents cannot persist due to current platform health status */
+#define ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY	(0x1ULL << 1)
+/* SCM device is unable to persist memory contents in certain conditions */
+#define ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL	(0x1ULL << 0)
+
+/* Bits status indicators for health bitmap indicating unarmed dimm */
+#define ND_PAPR_SCM_DIMM_UNARMED_MASK (ND_PAPR_SCM_DIMM_UNARMED |	\
+					ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY | \
+					ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL)
+
+/* Bits status indicators for health bitmap indicating unflushed dimm */
+#define ND_PAPR_SCM_DIMM_BAD_SHUTDOWN_MASK (ND_PAPR_SCM_DIMM_SHUTDOWN_DIRTY)
+
+/* Bits status indicators for health bitmap indicating unrestored dimm */
+#define ND_PAPR_SCM_DIMM_BAD_RESTORE_MASK  (ND_PAPR_SCM_DIMM_EMPTY)
+
+/* Bit status indicators for smart event notification */
+#define ND_PAPR_SCM_DIMM_SMART_EVENT_MASK (ND_PAPR_SCM_DIMM_HEALTH_CRITICAL | \
+					   ND_PAPR_SCM_DIMM_HEALTH_FATAL | \
+					   ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY | \
+					   ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL)
+
 /* Struct as returned by kernel in response to PAPR_DSM_PAPR_SMART_HEALTH */
 struct papr_scm_ndctl_health {
 	__be64 health_bitmap;
@@ -585,10 +622,48 @@ static ssize_t papr_health_show(struct device *dev,
 }
 DEVICE_ATTR_RO(papr_health);
 
+static ssize_t papr_flags_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct nvdimm *dimm = to_nvdimm(dev);
+	struct papr_scm_priv *p = nvdimm_provider_data(dimm);
+	u64 health;
+	int rc;
+
+	rc = drc_pmem_query_health(p);
+	if (rc)
+		return rc;
+
+	health = be64_to_cpu(p->health_bitmap) &
+		be64_to_cpu(p->health_bitmap_valid);
+
+	/* Check for various masks in bitmap and set the buffer */
+	if (health & ND_PAPR_SCM_DIMM_UNARMED_MASK)
+		rc += sprintf(buf, "not_armed ");
+
+	if (health & ND_PAPR_SCM_DIMM_BAD_SHUTDOWN_MASK)
+		rc += sprintf(buf + rc, "save_fail ");
+
+	if (health & ND_PAPR_SCM_DIMM_BAD_RESTORE_MASK)
+		rc += sprintf(buf + rc, "restore_fail ");
+
+	if (health & ND_PAPR_SCM_DIMM_ENCRYPTED)
+		rc += sprintf(buf + rc, "encrypted ");
+
+	if (health & ND_PAPR_SCM_DIMM_SMART_EVENT_MASK)
+		rc += sprintf(buf + rc, "smart_notify ");
+
+	if (rc > 0)
+		rc += sprintf(buf + rc, "\n");
+	return rc;
+}
+DEVICE_ATTR_RO(papr_flags);
+
 /* papr_scm specific dimm attributes */
 static struct attribute *papr_scm_nd_attributes[] = {
 	&dev_attr_papr_health.attr,
 	&dev_attr_papr_stats_version.attr,
+	&dev_attr_papr_flags.attr,
 	NULL,
 };
 
