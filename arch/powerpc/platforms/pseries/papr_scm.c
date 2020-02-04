@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 
 #include <asm/plpar_wrappers.h>
+#include <asm/papr_scm-dsm.h>
 
 #define BIND_ANY_ADDR (~0ul)
 
@@ -24,78 +25,6 @@
 	 (1ul << ND_CMD_CALL))
 
 #define PAPR_SCM_MAX_PERF_STAT 4096
-
-/*
- * Sub commands for ND_CMD_CALL. To prevent overlap from ND_CMD_*, values for
- * these enums start at 0x10000. These values are then returned from
- * cmd_to_func() making it easy to implement the switch-case block in
- * papr_scm_ndctl()
- */
-enum {
-	DSM_PAPR_MIN =  0x10000,
-	DSM_PAPR_SCM_HEALTH,
-	DSM_PAPR_SCM_STATS,
-	DSM_PAPR_MAX,
-};
-
-/* DIMM health bitmap bitmap indicators */
-/* SCM device is encrypted */
-#define ND_PAPR_SCM_DIMM_ENCRYPTED		(0x1ULL << 15)
-/* SCM device is unable to persist memory contents */
-#define ND_PAPR_SCM_DIMM_UNARMED		(0x1ULL << 7)
-/* SCM device failed to persist memory contents */
-#define ND_PAPR_SCM_DIMM_SHUTDOWN_DIRTY		(0x1ULL << 6)
-/* SCM device contents are persisted from previous IPL */
-#define ND_PAPR_SCM_DIMM_SHUTDOWN_CLEAN		(0x1ULL << 5)
-/* SCM device contents are not persisted from previous IPL */
-#define ND_PAPR_SCM_DIMM_EMPTY			(0x1ULL << 4)
-/* SCM device memory life remaining is critically low */
-#define ND_PAPR_SCM_DIMM_HEALTH_CRITICAL	(0x1ULL << 3)
-/* SCM device will be garded off next IPL due to failure */
-#define ND_PAPR_SCM_DIMM_HEALTH_FATAL		(0x1ULL << 2)
-/* SCM contents cannot persist due to current platform health status */
-#define ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY	(0x1ULL << 1)
-/* SCM device is unable to persist memory contents in certain conditions */
-#define ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL	(0x1ULL << 0)
-
-/* Bits status indicators for health bitmap indicating unarmed dimm */
-#define ND_PAPR_SCM_DIMM_UNARMED_MASK (ND_PAPR_SCM_DIMM_UNARMED |	\
-					ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY | \
-					ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL)
-
-/* Bits status indicators for health bitmap indicating unflushed dimm */
-#define ND_PAPR_SCM_DIMM_BAD_SHUTDOWN_MASK (ND_PAPR_SCM_DIMM_SHUTDOWN_DIRTY)
-
-/* Bits status indicators for health bitmap indicating unrestored dimm */
-#define ND_PAPR_SCM_DIMM_BAD_RESTORE_MASK  (ND_PAPR_SCM_DIMM_EMPTY)
-
-/* Bit status indicators for smart event notification */
-#define ND_PAPR_SCM_DIMM_SMART_EVENT_MASK (ND_PAPR_SCM_DIMM_HEALTH_CRITICAL | \
-					   ND_PAPR_SCM_DIMM_HEALTH_FATAL | \
-					   ND_PAPR_SCM_DIMM_HEALTH_UNHEALTHY | \
-					   ND_PAPR_SCM_DIMM_HEALTH_NON_CRITICAL)
-
-/* Struct as returned by kernel in response to PAPR_DSM_PAPR_SMART_HEALTH */
-struct papr_scm_ndctl_health {
-	__be64 health_bitmap;
-	__be64 health_bitmap_valid;
-} __packed;
-
-/* Payload expected with ND_CMD_CALL ioctl from libnvdimm */
-struct nd_pkg_papr_scm {
-	struct nd_cmd_pkg hdr;		/* Package header containing sub-cmd */
-	uint32_t cmd_status;		/* Out: Sub-cmd status returned back */
-	uint32_t reserved;
-	uint8_t payload[];		/* Out: Sub-cmd data buffer */
-} __packed;
-
-/* Buffer layout returned by phyp when reporting drc perf stats */
-struct papr_scm_perf_stats {
-	uint8_t version;		/* Should be 0x01 */
-	uint8_t reserved1;
-	__be16 size;			/* Size of this struct in bytes */
-	uint8_t buffer[];		/* Performance matrics */
-} __packed;
 
 struct papr_scm_priv {
 	struct platform_device *pdev;
@@ -423,9 +352,10 @@ static int papr_scm_get_health(struct papr_scm_priv *p,
 	struct papr_scm_ndctl_health *health =
 		(struct papr_scm_ndctl_health *)pkg->payload;
 
-	pkg->hdr.nd_fw_size = sizeof(struct papr_scm_ndctl_health);
+	pkg->hdr.nd_fw_size = ND_PAPR_SCM_ENVELOPE_CONTENT_SIZE(
+		struct papr_scm_ndctl_health);
 
-	if (pkg->hdr.nd_size_out < sizeof(struct papr_scm_ndctl_health)) {
+	if (pkg->hdr.nd_size_out < pkg->hdr.nd_fw_size) {
 		rc = -ENOSPC;
 		goto out;
 	}
@@ -534,18 +464,18 @@ int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 
 	case ND_CMD_CALL:
 		/* This happens if subcommand package sanity fails */
-		call_pkg = (struct nd_pkg_papr_scm *) buf;
+		call_pkg = nd_to_papr_cmd_pkg(buf);
 		call_pkg->cmd_status = -ENOENT;
 		*cmd_rc = 0;
 		break;
 
 	case DSM_PAPR_SCM_HEALTH:
-		call_pkg = (struct nd_pkg_papr_scm *) buf;
+		call_pkg = nd_to_papr_cmd_pkg(buf);
 		*cmd_rc = papr_scm_get_health(p, call_pkg);
 		break;
 
 	case DSM_PAPR_SCM_STATS:
-		call_pkg = (struct nd_pkg_papr_scm *) buf;
+		call_pkg = nd_to_papr_cmd_pkg(buf);
 		*cmd_rc = papr_scm_get_stats(p, call_pkg);
 		break;
 
