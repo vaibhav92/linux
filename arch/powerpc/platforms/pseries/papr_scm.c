@@ -557,15 +557,14 @@ static ssize_t papr_flags_show(struct device *dev,
 {
 	struct nvdimm *dimm = to_nvdimm(dev);
 	struct papr_scm_priv *p = nvdimm_provider_data(dimm);
-	u64 health;
+	__be64 health;
 	int rc;
 
 	rc = drc_pmem_query_health(p);
 	if (rc)
 		return rc;
 
-	health = be64_to_cpu(p->health_bitmap) &
-		be64_to_cpu(p->health_bitmap_valid);
+	health = p->health_bitmap & p->health_bitmap_valid;
 
 	/* Check for various masks in bitmap and set the buffer */
 	if (health & ND_PAPR_SCM_DIMM_UNARMED_MASK)
