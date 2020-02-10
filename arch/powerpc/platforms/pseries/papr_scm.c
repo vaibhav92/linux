@@ -193,7 +193,6 @@ static int drc_pmem_query_health(struct papr_scm_priv *p)
 	}
 
 	/* Store the retrieved health information in dimm platform data */
-
 	p->health_bitmap = ret[0];
 	p->health_bitmap_valid = ret[1];
 
@@ -321,16 +320,11 @@ static int cmd_to_func(struct nvdimm *nvdimm, unsigned int cmd, void *buf,
 		return -EINVAL;
 
 	if (!test_bit(cmd, &cmd_mask)) {
-
 		pr_debug("%s: Unsupported cmd=%u\n", __func__, cmd);
 		return -EINVAL;
-
 	} else if (cmd != ND_CMD_CALL) {
-
 		return cmd;
-
 	} else if (buf_len < sizeof(struct nd_pkg_papr_scm)) {
-
 		pr_debug("%s: Invalid pkg size=%u\n", __func__, buf_len);
 		return -EINVAL;
 
@@ -402,24 +396,18 @@ static int papr_scm_get_stats(struct papr_scm_priv *p,
 	if (!retbuffer)
 		return -ENOMEM;
 
-	rc = drc_pmem_query_stats(p, retbuffer);
+	copysize = pkg->hdr.nd_size_in - ND_PAPR_SCM_ENVELOPE_CONTENT_HDR_SIZE;
+	memcpy(retbuffer, pkg->payload, copysize);
+
+	rc = drc_pmem_query_stats(p, retbuffer, copysize);
 	if (rc)
 		goto out;
-
 	/*
 	 * Parse the retbuffer, fetch the size returned and return the
 	 * first nd_size_out bytes back to userspce.
 	 */
-	pkg->hdr.nd_fw_size = be16_to_cpu(retbuffer->size);
-	copysize = min_t(__u32, pkg->hdr.nd_fw_size, pkg->hdr.nd_size_out);
-
+	pkg->hdr.nd_fw_size = copysize;
 	memcpy(pkg->payload, retbuffer, copysize);
-
-	/* Verify if the returned buffer was copied completely */
-	if (pkg->hdr.nd_fw_size > copysize) {
-		rc = -ENOSPC;
-		goto out;
-	}
 
 out:
 	kfree(retbuffer);
@@ -758,7 +746,7 @@ static int papr_scm_probe(struct platform_device *pdev)
 	p->metadata_size = metadata_size;
 	p->pdev = pdev;
 
-	/* request the hypervisor to bind this region to somewhere in memory */
+ 	/* request the hypervisor to bind this region to somewhere in memory */
 	rc = drc_pmem_bind(p);
 
 	/* If phyp says drc memory still bound then force unbound and retry */
