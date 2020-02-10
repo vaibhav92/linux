@@ -153,22 +153,31 @@ err_out:
 }
 
 static int drc_pmem_query_stats(struct papr_scm_priv *p,
-				struct papr_scm_perf_stats *stats)
+				struct papr_scm_perf_stats *stats,
+				size_t size)
 {
 	unsigned long ret[PLPAR_HCALL_BUFSIZE];
 	int64_t rc;
 
-	if (!stats)
+	if (!stats || !size)
 		return -EINVAL;
 
 	rc = plpar_hcall(H_SCM_PERFORMANCE_STATS, ret, p->drc_index,
-			 __pa(stats));
-	if (rc != H_SUCCESS) {
+			 __pa(stats), size);
+	if(rc == H_SUCCESS) {
+		dev_dbg(&p->pdev->dev, "Performance stats returned %d stats",
+			be32_to_cpu(stats->num_statistics));
+		return 0;
+	} if (rc == H_PARTIAL) {
+		dev_err(&p->pdev->dev,
+			 "Unknown performance stats, Err:0x%016llX\n",
+			be64_to_cpu(ret[0]));
+		return -ENOENT;
+	} else {
 		dev_err(&p->pdev->dev,
 			 "Failed to query performance stats, Err:%lld\n", rc);
 		return -ENXIO;
-	} else
-		return 0;
+	}
 }
 
 static int drc_pmem_query_health(struct papr_scm_priv *p)
@@ -508,31 +517,39 @@ static inline int papr_scm_node(int node)
 	return min_node;
 }
 
-static ssize_t papr_stats_version_show(struct device *dev,
+static ssize_t papr_stats_supported_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct nvdimm *dimm = to_nvdimm(dev);
 	struct papr_scm_priv *p = nvdimm_provider_data(dimm);
 	struct papr_scm_perf_stats *retbuffer;
-	int rc;
+	uint64_t statid;
+	int rc, i;
 
 	/* Return buffer for phyp where stats are written */
 	retbuffer = kzalloc(PAPR_SCM_MAX_PERF_STAT, GFP_KERNEL);
 	if (!retbuffer)
 		return -ENOMEM;
 
-	rc = drc_pmem_query_stats(p, retbuffer);
+	memcpy(retbuffer->eye_catcher, ND_PAPR_SCM_PERF_STATS_EYECATCHER,
+	       sizeof(retbuffer->eye_catcher));
+	retbuffer->stats_version = cpu_to_be32(0x1);
+	retbuffer->num_statistics = 0;
+
+	rc = drc_pmem_query_stats(p, retbuffer, PAPR_SCM_MAX_PERF_STAT);
 	if (rc)
 		goto out;
-	else
-		rc = sprintf(buf, "%d\n", retbuffer->version);
 
+	for(i = 0; i < retbuffer->num_statistics; ++i) {
+		statid = be64_to_cpu(retbuffer->scm_statistics[i].statistic_id);
+		rc += sprintf(buf, "%8s ", (char *) &(statid));
+	}
 out:
 	kfree(retbuffer);
 	return rc;
 
 }
-DEVICE_ATTR_RO(papr_stats_version);
+DEVICE_ATTR_RO(papr_stats_supported);
 
 static ssize_t papr_health_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -591,7 +608,7 @@ DEVICE_ATTR_RO(papr_flags);
 /* papr_scm specific dimm attributes */
 static struct attribute *papr_scm_nd_attributes[] = {
 	&dev_attr_papr_health.attr,
-	&dev_attr_papr_stats_version.attr,
+	&dev_attr_papr_stats_supported.attr,
 	&dev_attr_papr_flags.attr,
 	NULL,
 };
