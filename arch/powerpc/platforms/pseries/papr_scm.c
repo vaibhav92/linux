@@ -15,13 +15,15 @@
 #include <linux/seq_buf.h>
 
 #include <asm/plpar_wrappers.h>
+#include <asm/papr_pdsm.h>
 
 #define BIND_ANY_ADDR (~0ul)
 
 #define PAPR_SCM_DIMM_CMD_MASK \
 	((1ul << ND_CMD_GET_CONFIG_SIZE) | \
 	 (1ul << ND_CMD_GET_CONFIG_DATA) | \
-	 (1ul << ND_CMD_SET_CONFIG_DATA))
+	 (1ul << ND_CMD_SET_CONFIG_DATA) | \
+	 (1ul << ND_CMD_CALL))
 
 /* DIMM health bitmap bitmap indicators */
 /* SCM device is unable to persist memory contents */
@@ -88,6 +90,21 @@ struct papr_scm_priv {
 	/* Health information for the dimm */
 	u64 health_bitmap;
 };
+
+/* Convert a libnvdimm nd_cmd_pkg to pdsm specific pkg */
+static inline struct nd_pdsm_cmd_pkg *nd_to_pdsm_cmd_pkg(struct nd_cmd_pkg *cmd)
+{
+	return (struct nd_pdsm_cmd_pkg *)cmd;
+}
+
+/* Return the payload pointer for a given pcmd */
+static inline void *pdsm_cmd_to_payload(struct nd_pdsm_cmd_pkg *pcmd)
+{
+	if (pcmd->hdr.nd_size_in == 0 && pcmd->hdr.nd_size_out == 0)
+		return NULL;
+	else
+		return (void *)(pcmd->payload);
+}
 
 static int drc_pmem_bind(struct papr_scm_priv *p)
 {
@@ -349,17 +366,113 @@ static int papr_scm_meta_set(struct papr_scm_priv *p,
 	return 0;
 }
 
+/*
+ * Do a sanity checks on the inputs args to dimm-control function and return
+ * '0' if valid. This also does validation on ND_CMD_CALL sub-command packages.
+ */
+static int is_cmd_valid(struct nvdimm *nvdimm, unsigned int cmd, void *buf,
+			unsigned int buf_len)
+{
+	unsigned long cmd_mask = PAPR_SCM_DIMM_CMD_MASK;
+	struct nd_pdsm_cmd_pkg *pkg;
+	struct nd_cmd_pkg *nd_cmd;
+	struct papr_scm_priv *p;
+	enum papr_pdsm pdsm;
+
+	/* Only dimm-specific calls are supported atm */
+	if (!nvdimm)
+		return -EINVAL;
+
+	/* get the provider data from struct nvdimm */
+	p = nvdimm_provider_data(nvdimm);
+
+	if (!test_bit(cmd, &cmd_mask)) {
+		dev_dbg(&p->pdev->dev, "Unsupported cmd=%u\n", cmd);
+		return -EINVAL;
+	}
+
+	/* For CMD_CALL verify pdsm request */
+	if (cmd == ND_CMD_CALL) {
+		/* Verify the envelope package */
+		if (!buf || buf_len < sizeof(struct nd_pdsm_cmd_pkg)) {
+			dev_dbg(&p->pdev->dev, "Invalid pkg size=%u\n",
+				buf_len);
+			return -EINVAL;
+		}
+
+		/* Verify that the nd_cmd_pkg.nd_family is correct */
+		nd_cmd = (struct nd_cmd_pkg *)buf;
+		if (nd_cmd->nd_family != NVDIMM_FAMILY_PAPR) {
+			dev_dbg(&p->pdev->dev, "Invalid pkg family=0x%llx\n",
+				nd_cmd->nd_family);
+			return -EINVAL;
+		}
+
+		/* Get the pdsm request package and the command */
+		pkg = nd_to_pdsm_cmd_pkg(nd_cmd);
+		pdsm = pkg->hdr.nd_command;
+
+		/* Verify if the psdm command is valid */
+		if (pdsm <= PAPR_PDSM_MIN || pdsm >= PAPR_PDSM_MAX) {
+			dev_dbg(&p->pdev->dev, "PDSM[0x%x]: Invalid PDSM\n", pdsm);
+			return -EINVAL;
+		}
+
+		/* We except a payload with all PDSM commands */
+		if (!pdsm_cmd_to_payload(pkg)) {
+			dev_dbg(&p->pdev->dev, "PDSM[0x%x]: Empty payload\n", pdsm);
+			return -EINVAL;
+		}
+
+		/* Ensure reserved fields of the pdsm header are set to 0 */
+		if (pkg->reserved[0] || pkg->reserved[1]) {
+			dev_dbg(&p->pdev->dev,
+				"PDSM[0x%x]: Invalid reserved field usage\n", pdsm);
+			return -EINVAL;
+		}
+	}
+
+	/* Let the command be further processed */
+	return 0;
+}
+
+/*
+ * For a given pdsm request call an appropriate service function.
+ * Returns errors if any while handling the pdsm command package.
+ */
+static int papr_scm_service_pdsm(struct papr_scm_priv *p,
+				 struct nd_pdsm_cmd_pkg *pkg)
+{
+	const enum papr_pdsm pdsm = pkg->hdr.nd_command;
+
+	dev_dbg(&p->pdev->dev, "PDSM[0x%x]: Servicing..\n", pdsm);
+
+	/* Call pdsm service function */
+	switch (pdsm) {
+	default:
+		dev_dbg(&p->pdev->dev, "PDSM[0x%x]: Unsupported PDSM request\n",
+			pdsm);
+		pkg->cmd_status = -ENOENT;
+		break;
+	}
+
+	return pkg->cmd_status;
+}
+
 static int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc,
 			  struct nvdimm *nvdimm, unsigned int cmd, void *buf,
 			  unsigned int buf_len, int *cmd_rc)
 {
 	struct nd_cmd_get_config_size *get_size_hdr;
+	struct nd_pdsm_cmd_pkg *call_pkg = NULL;
 	struct papr_scm_priv *p;
 	int rc;
 
-	/* Only dimm-specific calls are supported atm */
-	if (!nvdimm)
-		return -EINVAL;
+	rc = is_cmd_valid(nvdimm, cmd, buf, buf_len);
+	if (rc) {
+		pr_debug("Invalid cmd=0x%x. Err=%d\n", cmd, rc);
+		return rc;
+	}
 
 	/* Use a local variable in case cmd_rc pointer is NULL */
 	if (!cmd_rc)
@@ -383,6 +496,11 @@ static int papr_scm_ndctl(struct nvdimm_bus_descriptor *nd_desc,
 
 	case ND_CMD_SET_CONFIG_DATA:
 		*cmd_rc = papr_scm_meta_set(p, buf);
+		break;
+
+	case ND_CMD_CALL:
+		call_pkg = nd_to_pdsm_cmd_pkg(buf);
+		*cmd_rc = papr_scm_service_pdsm(p, call_pkg);
 		break;
 
 	default:
