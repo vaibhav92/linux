@@ -642,6 +642,22 @@ static const struct attribute_group *papr_nd_attr_groups[] = {
 	NULL,
 };
 
+static struct pmu pmu_nvdimm = {
+	.module = THIS_MODULE,
+};
+
+static int papr_scm_init_pmu(struct papr_scm_priv *p)
+{
+	int rc;
+	pmu->dev = &p->nvdimm->dev;
+	pmu->name = "nvdimm-pmu";
+	rc = perf_pmu_register( &pmu_nvdimm, "test pmu",PERF_TYPE_HARDWARE);
+	if (rc) {
+		dev_err(&p->pdev->dev, "Unable to register pmu %d\n", rc);
+	}
+	return rc;
+}
+
 static int papr_scm_nvdimm_init(struct papr_scm_priv *p)
 {
 	struct device *dev = &p->pdev->dev;
@@ -711,7 +727,9 @@ static int papr_scm_nvdimm_init(struct papr_scm_priv *p)
 	if (target_nid != online_nid)
 		dev_info(dev, "Region registered with target node %d and online node %d",
 			 target_nid, online_nid);
+	
 
+	papr_scm_init_pmu(p);
 	return 0;
 
 err:	nvdimm_bus_unregister(p->bus);
@@ -749,6 +767,7 @@ static int papr_scm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%pOF: missing unit-guid!\n", dn);
 		return -ENODEV;
 	}
+
 
 
 	p = kzalloc(sizeof(*p), GFP_KERNEL);
