@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/seq_buf.h>
+#include <linux/perf_event.h>
 
 #include <asm/plpar_wrappers.h>
 #include <asm/papr_pdsm.h>
@@ -642,20 +643,19 @@ static const struct attribute_group *papr_nd_attr_groups[] = {
 	NULL,
 };
 
-static struct pmu pmu_nvdimm = {
-	.module = THIS_MODULE,
-};
+static struct pmu pmu_nvdimm = {0};
 
 static int papr_scm_init_pmu(struct papr_scm_priv *p)
 {
 	int rc;
-	pmu->dev = &p->nvdimm->dev;
-	pmu->name = "nvdimm-pmu";
+	pmu_nvdimm.dev = &p->pdev->dev;
+	pmu_nvdimm.name = "nvdimm-pmu";
+	pmu_nvdimm.module = THIS_MODULE;
 	rc = perf_pmu_register( &pmu_nvdimm, "test pmu",PERF_TYPE_HARDWARE);
 	if (rc) {
 		dev_err(&p->pdev->dev, "Unable to register pmu %d\n", rc);
 	}
-	return rc;
+ 	return rc;
 }
 
 static int papr_scm_nvdimm_init(struct papr_scm_priv *p)
