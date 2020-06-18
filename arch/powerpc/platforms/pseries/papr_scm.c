@@ -654,6 +654,8 @@ static int papr_scm_init_pmu(struct papr_scm_priv *p)
 	rc = perf_pmu_register( &pmu_nvdimm, "test pmu",PERF_TYPE_HARDWARE);
 	if (rc) {
 		dev_err(&p->pdev->dev, "Unable to register pmu %d\n", rc);
+	} else {
+		dev_into(&p->pdev->dev, "Registered %d\n", rc);
 	}
  	return rc;
 }
