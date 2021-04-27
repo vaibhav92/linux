@@ -302,6 +302,11 @@ int opal_secvar_get_next(const char *key, uint64_t *key_len,
 int opal_secvar_enqueue_update(const char *key, uint64_t key_len, u8 *data,
 			       uint64_t data_size);
 
+int opal_hca_chip_setup(u32 chip, struct opal_hca_chip_params *params);
+int opal_hca_chip_reset(u32 chip);
+int opal_hca_unit_setup(u32 chip, u32 unit, struct opal_hca_unit_params *params);
+int opal_hca_unit_reset(u32 chip, u32 unit);
+
 s64 opal_mpipl_update(enum opal_mpipl_ops op, u64 src, u64 dest, u64 size);
 s64 opal_mpipl_register_tag(enum opal_mpipl_tags tag, u64 addr);
 s64 opal_mpipl_query_tag(enum opal_mpipl_tags tag, __be64 *addr);

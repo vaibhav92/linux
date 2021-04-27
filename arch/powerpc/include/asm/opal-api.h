@@ -214,7 +214,11 @@
 #define OPAL_SECVAR_GET				176
 #define OPAL_SECVAR_GET_NEXT			177
 #define OPAL_SECVAR_ENQUEUE_UPDATE		178
-#define OPAL_LAST				178
+#define OPAL_HCA_CHIP_SETUP			181
+#define OPAL_HCA_CHIP_RESET			182
+#define OPAL_HCA_UNIT_SETUP			183
+#define OPAL_HCA_UNIT_RESET			184
+#define OPAL_LAST				184
 
 #define QUIESCE_HOLD			1 /* Spin all calls at entry */
 #define QUIESCE_REJECT			2 /* Fail all calls with OPAL_BUSY */
@@ -1182,6 +1186,25 @@ struct opal_mpipl_fadump {
 	__be32	region_cnt;
 	struct	opal_mpipl_region region[];
 } __packed;
+
+struct opal_hca_chip_params {
+	__be64 page_size;
+	__be64 overflow_mask;
+	__be64 sampling_rate;
+	__be64 sampling_period;
+	/* Usable only if dynamic sampling is configured */
+	__be64 sampling_upper_threshold;
+	__be64 sampling_lower_threshold;
+};
+
+struct opal_hca_unit_params {
+	__be64 monitor_base;
+	__be64 monitor_size;
+	__be64 counter_base;
+	__be64 decay_enable;
+	/* Usable only if decay is enabled */
+	__be64 decay_delay;
+};
 
 #endif /* __ASSEMBLY__ */
 
