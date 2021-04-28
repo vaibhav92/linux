@@ -24,6 +24,8 @@
 #include <asm/opal.h>
 #include <asm/hca.h>
 
+#define CEIL_DIV(a, b)		(((b) != 0) ? ((a) + (b) - 1) / (b) : 0)
+
 /* Keep track of units from each chip */
 struct hca_chip_entry {
 	struct hca_unit_entry {
@@ -48,17 +50,44 @@ static unsigned int nr_hca_chips;
 static struct dentry *hca_debugfs_dir;
 static DEFINE_MUTEX(hca_debugfs_mutex);
 
-static int hca_counter_base_init(struct hca_unit_entry *uent)
+static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
 {
-	uent->counter_base = 0;
-	uent->counter_size = 0;
+	unsigned long pfn, start_pfn, nr_pages;
+	struct page *pages;
+
+	uent->counter_size = (uent->monitor_size / PAGE_SIZE) * HCA_ENTRY_SIZE;
+	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
+	pages = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_THISNODE |
+				   __GFP_NOWARN, node, NULL);
+	if (!pages) {
+		uent->counter_base = 0;
+		uent->counter_size = 0;
+		return -ENOMEM;
+	}
+
+	start_pfn = page_to_pfn(pages);
+	uent->counter_base = PFN_PHYS(start_pfn);
+	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++) {
+		if (IS_ALIGNED(pfn, PAGES_PER_SECTION))
+			cond_resched();
+		clear_page(__va(PFN_PHYS(pfn)));
+	}
+
+	flush_dcache_range(PFN_PHYS(start_pfn), PFN_PHYS(start_pfn + nr_pages));
+
 	return 0;
 }
 
 static int hca_counter_base_free(struct hca_unit_entry *uent)
 {
+	unsigned long start_pfn, nr_pages;
+
+	start_pfn = uent->counter_base;
+	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
+	free_contig_range(start_pfn, nr_pages);
 	uent->counter_base = 0;
 	uent->counter_size = 0;
+
 	return 0;
 }
 
@@ -94,10 +123,9 @@ static int hca_unit_enable_set(void *idx, u64 val)
 	/* Check if already enabled or disabled */
 	if (!uent->enable && val) {
 		memset(&up, 0, sizeof(up));
-		if (hca_counter_base_init(uent)) {
-			rc = -ENOMEM;
+		rc = hca_counter_base_init(uent, cent->id);
+		if (rc)
 			goto err;
-		}
 
 		up.monitor_base = cpu_to_be64(uent->monitor_base);
 		up.monitor_size = cpu_to_be64(uent->monitor_size);

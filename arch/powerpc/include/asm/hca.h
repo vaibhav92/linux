@@ -10,6 +10,8 @@
 
 #define HCA_MAX_UNITS_PER_CHIP		2
 
+#define HCA_ENTRY_SIZE			8
+
 #define HCA_PAGE_SIZE_4KB		0
 #define HCA_PAGE_SIZE_64KB		1
 
