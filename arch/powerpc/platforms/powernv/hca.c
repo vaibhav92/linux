@@ -76,14 +76,24 @@ static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
 	flush_dcache_range((unsigned long) __va(PFN_PHYS(start_pfn)),
 			   (unsigned long) __va(PFN_PHYS(start_pfn + nr_pages)));
 
+	pr_info("chip: %u, unit: %u counter memory init at 0x%016llx\n",
+		cent->id, uidx, uent->counter_base);
+
 	return 0;
 }
 
 static int hca_counter_base_free(struct hca_unit_entry *uent)
 {
 	unsigned long start_pfn, nr_pages;
+	struct hca_chip_entry *cent;
+	struct hca_unit_entry *uent;
 
-	uent = &hca_chips[cidx].units[uidx];
+	cent = &hca_chips[cidx];
+	uent = &cent->units[uidx];
+
+	pr_info("chip: %u, unit: %u counter memory free at 0x%016llx\n",
+		cent->id, uidx, uent->counter_base);
+
 	start_pfn = PHYS_PFN(uent->counter_base);
 	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
 	free_contig_range(start_pfn, nr_pages);
