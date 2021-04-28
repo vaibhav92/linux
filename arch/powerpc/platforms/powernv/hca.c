@@ -48,6 +48,90 @@ static unsigned int nr_hca_chips;
 static struct dentry *hca_debugfs_dir;
 static DEFINE_MUTEX(hca_debugfs_mutex);
 
+static int hca_counter_base_init(struct hca_unit_entry *uent)
+{
+	uent->counter_base = 0;
+	uent->counter_size = 0;
+	return 0;
+}
+
+static int hca_counter_base_free(struct hca_unit_entry *uent)
+{
+	uent->counter_base = 0;
+	uent->counter_size = 0;
+	return 0;
+}
+
+static int hca_unit_enable_get(void *idx, u64 *val)
+{
+	u32 cidx, uidx;
+
+	cidx = ((u64) idx) >> 32;
+	uidx = ((u64) idx) & U32_MAX;
+	*val = hca_chips[cidx].units[uidx].enable;
+
+	return 0;
+}
+
+static int hca_unit_enable_set(void *idx, u64 val)
+{
+	struct opal_hca_unit_params up;
+	struct hca_chip_entry *cent;
+	struct hca_unit_entry *uent;
+	u32 cidx, uidx;
+	int rc;
+
+	if (val > 1)
+		return -EINVAL;
+
+	rc = -EAGAIN;
+	mutex_lock(&hca_debugfs_mutex);
+	cidx = ((u64) idx) >> 32;
+	uidx = ((u64) idx) & U32_MAX;
+	cent = &hca_chips[cidx];
+	uent = &cent->units[uidx];
+
+	/* Check if already enabled or disabled */
+	if (!uent->enable && val) {
+		memset(&up, 0, sizeof(up));
+		if (hca_counter_base_init(uent)) {
+			rc = -ENOMEM;
+			goto err;
+		}
+
+		up.monitor_base = cpu_to_be64(uent->monitor_base);
+		up.monitor_size = cpu_to_be64(uent->monitor_size);
+		up.counter_base = cpu_to_be64(uent->counter_base);
+		up.decay_enable = 0;	/* TODO */
+		up.decay_delay  = 0;	/* TODO */
+
+		if (opal_hca_unit_setup(cent->id, uidx, &up) != OPAL_SUCCESS) {
+			hca_counter_base_free(uent);
+			rc = -EIO;
+			goto err;
+		}
+
+	} else if (uent->enable && !val) {
+		if (opal_hca_unit_reset(cent->id, uidx) != OPAL_SUCCESS) {
+			rc = -EIO;
+			goto err;
+		}
+
+		hca_counter_base_free(uent);
+	}
+
+	rc = 0;
+	uent->enable = val;
+
+err:
+	mutex_unlock(&hca_debugfs_mutex);
+
+	return rc;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(hca_unit_enable_fops,
+			hca_unit_enable_get, hca_unit_enable_set, "%llu\n");
+
 static void hca_init_unit_debugfs(struct hca_chip_entry *cent)
 {
 	struct hca_unit_entry *uent;
@@ -58,7 +142,9 @@ static void hca_init_unit_debugfs(struct hca_chip_entry *cent)
 		uent = &cent->units[i];
 		snprintf(name, sizeof(name), "unit%u", i);
 		uent->dir = debugfs_create_dir(name, cent->dir);
-		debugfs_create_bool("enable", 0600, uent->dir, &uent->enable);
+		debugfs_create_file("enable", S_IRUSR | S_IWUSR, uent->dir,
+				    (void *) ((u64) cent->id << 32 | i),
+				    &hca_unit_enable_fops);
 		debugfs_create_x64("monitor-base", 0600, uent->dir, &uent->monitor_base);
 		debugfs_create_x64("monitor-size", 0600, uent->dir, &uent->monitor_size);
 		debugfs_create_x64("counter-size", 0400, uent->dir, &uent->counter_size);
