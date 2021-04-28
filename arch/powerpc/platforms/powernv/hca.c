@@ -160,18 +160,20 @@ err:
 DEFINE_SIMPLE_ATTRIBUTE(hca_unit_enable_fops,
 			hca_unit_enable_get, hca_unit_enable_set, "%llu\n");
 
-static void hca_init_unit_debugfs(struct hca_chip_entry *cent)
+static void hca_init_unit_debugfs(u32 cidx)
 {
+	struct hca_chip_entry *cent;
 	struct hca_unit_entry *uent;
 	char name[32];
-	int i;
+	u32 uidx;
 
-	for (i = 0; i < HCA_MAX_UNITS_PER_CHIP; i++) {
-		uent = &cent->units[i];
-		snprintf(name, sizeof(name), "unit%u", i);
+	cent = &hca_chips[cidx];
+	for (uidx = 0; uidx < HCA_MAX_UNITS_PER_CHIP; uidx++) {
+		uent = &cent->units[uidx];
+		snprintf(name, sizeof(name), "unit%u", uidx);
 		uent->dir = debugfs_create_dir(name, cent->dir);
 		debugfs_create_file("enable", S_IRUSR | S_IWUSR, uent->dir,
-				    (void *) ((u64) cent->id << 32 | i),
+				    (void *) (((u64) cidx) << 32 | uidx),
 				    &hca_unit_enable_fops);
 		debugfs_create_x64("monitor-base", 0600, uent->dir, &uent->monitor_base);
 		debugfs_create_x64("monitor-size", 0600, uent->dir, &uent->monitor_size);
@@ -179,20 +181,22 @@ static void hca_init_unit_debugfs(struct hca_chip_entry *cent)
 	}
 }
 
-static void hca_free_unit_debugfs(struct hca_chip_entry *cent)
+static void hca_free_unit_debugfs(u32 cidx)
 {
-	int i;
+	struct hca_chip_entry *cent;
+	u32 uidx;
 
-	for (i = 0; i < HCA_MAX_UNITS_PER_CHIP; i++)
-		debugfs_remove_recursive(cent->units[i].dir);
+	cent = &hca_chips[cidx];
+	for (uidx = 0; uidx < HCA_MAX_UNITS_PER_CHIP; uidx++)
+		debugfs_remove_recursive(cent->units[uidx].dir);
 }
 
 static int hca_chip_enable_get(void *idx, u64 *val)
 {
-	u32 cid;
+	u32 cidx;
 
-	cid = ((u64) idx) & U32_MAX;
-	*val = hca_chips[cid].enable;
+	cidx = ((u64) idx) & U32_MAX;
+	*val = hca_chips[cidx].enable;
 
 	return 0;
 }
@@ -201,7 +205,7 @@ static int hca_chip_enable_set(void *idx, u64 val)
 {
 	struct opal_hca_chip_params cp;
 	struct hca_chip_entry *cent;
-	u32 cid;
+	u32 cidx;
 	int rc;
 
 	if (val > 1)
@@ -209,8 +213,8 @@ static int hca_chip_enable_set(void *idx, u64 val)
 
 	rc = -EAGAIN;
 	mutex_lock(&hca_debugfs_mutex);
-	cid = ((u64) idx) & U32_MAX;
-	cent = &hca_chips[cid];
+	cidx = ((u64) idx) & U32_MAX;
+	cent = &hca_chips[cidx];
 
 	/* Check if already enabled or disabled */
 	if (!cent->enable && val) {
@@ -231,10 +235,10 @@ static int hca_chip_enable_set(void *idx, u64 val)
 			goto err;
 		}
 
-		hca_init_unit_debugfs(cent);
+		hca_init_unit_debugfs(cidx);
 	} else if (cent->enable && !val) {
 		opal_hca_chip_reset(cent->id);
-		hca_free_unit_debugfs(cent);
+		hca_free_unit_debugfs(cidx);
 	}
 
 	rc = 0;
@@ -252,21 +256,22 @@ DEFINE_SIMPLE_ATTRIBUTE(hca_chip_enable_fops,
 static void hca_init_chip_debugfs(void)
 {
 	struct hca_chip_entry *cent;
+	u32 node, cidx;
 	char name[32];
-	int chip, i;
 
 	hca_debugfs_dir = debugfs_create_dir("hca", powerpc_debugfs_root);
-	i = 0;
+	cidx = 0;
 
 	/* TODO: use device tree to find chip information */
-	for_each_online_node(chip) {
-		cent = &hca_chips[i];
-		cent->id = chip;
+	for_each_online_node(node) {
+		cent = &hca_chips[cidx];
+		cent->id = node;
 		snprintf(name, sizeof(name), "chip%u", cent->id);
 		cent->dir = debugfs_create_dir(name, hca_debugfs_dir);
 		debugfs_create_file("enable", S_IRUSR | S_IWUSR, cent->dir,
-				    (void *) (u64) i, &hca_chip_enable_fops);
-		i++;
+				    (void *) (u64) cidx,
+				    &hca_chip_enable_fops);
+		cidx++;
 	}
 }
 
