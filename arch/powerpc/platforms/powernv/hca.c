@@ -73,7 +73,8 @@ static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
 		clear_page(__va(PFN_PHYS(pfn)));
 	}
 
-	flush_dcache_range(PFN_PHYS(start_pfn), PFN_PHYS(start_pfn + nr_pages));
+	flush_dcache_range((unsigned long) __va(PFN_PHYS(start_pfn)),
+			   (unsigned long) __va(PFN_PHYS(start_pfn + nr_pages)));
 
 	return 0;
 }
