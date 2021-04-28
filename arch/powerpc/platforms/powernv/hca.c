@@ -2,7 +2,7 @@
 
 /*
  * Copyright 2021, Sandipan Das, IBM Corp.
- * Interfaces to use the Hot-Cold Affinity helper.
+ * Interfaces to use the Hot-Cold Affinity helper
  */
 
 #define pr_fmt(fmt) "hca: " fmt
@@ -73,30 +73,44 @@ static void hca_free_unit_debugfs(struct hca_chip_entry *cent)
 		debugfs_remove_recursive(cent->units[i].dir);
 }
 
-static int hca_chip_enable_get(void *id, u64 *val)
+static int hca_chip_enable_get(void *idx, u64 *val)
 {
-	*val = hca_chips[(size_t) id].enable;
+	u32 cid;
+
+	cid = ((u64) idx) & U32_MAX;
+	*val = hca_chips[cid].enable;
+
 	return 0;
 }
 
-static int hca_chip_enable_set(void *id, u64 val)
+static int hca_chip_enable_set(void *idx, u64 val)
 {
 	struct opal_hca_chip_params cp;
 	struct hca_chip_entry *cent;
-	int rc = -EAGAIN;
+	u32 cid;
+	int rc;
 
 	if (val > 1)
 		return -EINVAL;
 
+	rc = -EAGAIN;
 	mutex_lock(&hca_debugfs_mutex);
-	cent = &hca_chips[(size_t) id];
+	cid = ((u64) idx) & U32_MAX;
+	cent = &hca_chips[cid];
 
 	/* Check if already enabled or disabled */
 	if (!cent->enable && val) {
 		memset(&cp, 0, sizeof(cp));
-		cp.page_size = cpu_to_be64(HCA_PAGE_SIZE_DEFAULT);
-		cp.overflow_mask = cpu_to_be64(HCA_OVERFLOW_MASK_DEFAULT);
-		cp.sampling_rate = cpu_to_be64(HCA_SAMPLING_RATE_DEFAULT);
+#ifdef CONFIG_PPC_4K_PAGES
+		cp.page_size = cpu_to_be64(HCA_PAGE_SIZE_4KB);
+#else /* CONFIG_PPC_64K_PAGES */
+		cp.page_size = cpu_to_be64(HCA_PAGE_SIZE_64KB);
+#endif
+		cp.counter_mask = cpu_to_be64(HCA_COUNTER_MASK_DEFAULT);
+		cp.cmd_sampling_rate = cpu_to_be64(HCA_CMD_SAMPLING_RATE_DEFAULT);
+		cp.cmd_sampling_period = 0;	/* TODO */
+		cp.upper_cmd_threshold = 0;	/* TODO */
+		cp.lower_cmd_threshold = 0;	/* TODO */
 
 		if (opal_hca_chip_setup(cent->id, &cp) != OPAL_SUCCESS) {
 			rc = -EIO;
@@ -137,8 +151,7 @@ static void hca_init_chip_debugfs(void)
 		snprintf(name, sizeof(name), "chip%u", cent->id);
 		cent->dir = debugfs_create_dir(name, hca_debugfs_dir);
 		debugfs_create_file("enable", S_IRUSR | S_IWUSR, cent->dir,
-				    (void *) (unsigned long) i,
-				    &hca_chip_enable_fops);
+				    (void *) (u64) i, &hca_chip_enable_fops);
 		i++;
 	}
 }
