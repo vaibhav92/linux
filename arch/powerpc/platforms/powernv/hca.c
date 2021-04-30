@@ -145,8 +145,9 @@ static int hca_unit_enable_set(void *idx, u64 val)
 		up.decay_enable = 0;	/* TODO */
 		up.decay_delay  = 0;	/* TODO */
 
-		if (opal_hca_unit_setup(cent->id, uidx, &up) != OPAL_SUCCESS) {
-			hca_counter_base_free(uent);
+		rc = opal_hca_unit_setup(cent->id, uidx, (void *) __pa(&up));
+		if (rc != OPAL_SUCCESS) {
+			hca_counter_base_free(cidx, uidx);
 			rc = -EIO;
 			goto err;
 		}
@@ -242,7 +243,8 @@ static int hca_chip_enable_set(void *idx, u64 val)
 		cp.upper_cmd_threshold = 0;	/* TODO */
 		cp.lower_cmd_threshold = 0;	/* TODO */
 
-		if (opal_hca_chip_setup(cent->id, &cp) != OPAL_SUCCESS) {
+		rc = opal_hca_chip_setup(cent->id, (void *) __pa(&cp));
+		if (rc != OPAL_SUCCESS) {
 			rc = -EIO;
 			goto err;
 		}
