@@ -24,8 +24,6 @@
 #include <asm/opal.h>
 #include <asm/hca.h>
 
-#define CEIL_DIV(a, b)		(((b) != 0) ? ((a) + (b) - 1) / (b) : 0)
-
 /* Keep track of units from each chip */
 struct hca_chip_entry {
 	struct hca_unit_entry {
@@ -55,7 +53,8 @@ static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
 	struct page *pages;
 
 	uent->counter_size = (uent->monitor_size / PAGE_SIZE) * HCA_ENTRY_SIZE;
-	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
+	uent->counter_size = roundup(uent->counter_size, PAGE_SIZE);
+	nr_pages = uent->counter_size / PAGE_SIZE;
 	pages = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_THISNODE |
 				   __GFP_NOWARN, node, NULL);
 	if (!pages) {
@@ -94,7 +93,7 @@ static int hca_counter_base_free(struct hca_unit_entry *uent)
 		cent->id, uidx, uent->counter_base);
 
 	start_pfn = PHYS_PFN(uent->counter_base);
-	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
+	nr_pages = uent->counter_size / PAGE_SIZE;
 	free_contig_range(start_pfn, nr_pages);
 	uent->counter_base = 0;
 	uent->counter_size = 0;
