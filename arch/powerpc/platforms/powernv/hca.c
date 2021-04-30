@@ -33,7 +33,6 @@ struct hca_chip_entry {
 		u64 monitor_size;
 		u64 counter_base;
 		u64 counter_size;
-		void *counter_data;
 
 		bool enable;
 		struct dentry *dir;
@@ -173,24 +172,73 @@ err:
 DEFINE_SIMPLE_ATTRIBUTE(hca_unit_enable_fops,
 			hca_unit_enable_get, hca_unit_enable_set, "%llu\n");
 
+static ssize_t hca_counter_data_read(struct file *file, char __user *ubuf,
+				     size_t count, loff_t *ppos)
+{
+	struct hca_unit_entry *uent;
+	u32 cidx, uidx;
+
+	cidx = ((u64) file->private_data) >> 32;
+	uidx = ((u64) file->private_data) & U32_MAX;
+	uent = &hca_chips[cidx].units[uidx];
+
+	if (!uent->enable)
+		return -ENXIO;
+
+	return simple_read_from_buffer(ubuf, count, ppos,
+				       __va(uent->counter_base),
+				       uent->counter_size);
+}
+
+static int hca_counter_data_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	struct hca_unit_entry *uent;
+	u32 cidx, uidx;
+
+	cidx = ((u64) file->private_data) >> 32;
+	uidx = ((u64) file->private_data) & U32_MAX;
+	uent = &hca_chips[cidx].units[uidx];
+
+	if (!uent->enable)
+		return -ENXIO;
+
+	if ((uent->counter_size < (vma->vm_end - vma->vm_start)) ||
+	    (uent->counter_size <= (vma->vm_pgoff << PAGE_SHIFT)))
+		return -EINVAL;
+
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	return remap_pfn_range(vma, vma->vm_start,
+			       PHYS_PFN(uent->counter_base) + vma->vm_pgoff,
+			       vma->vm_end - vma->vm_start, vma->vm_page_prot);
+}
+
+static const struct file_operations hca_counter_data_fops = {
+	.llseek = default_llseek,
+	.read   = hca_counter_data_read,
+	.open   = simple_open,
+	.mmap   = hca_counter_data_mmap,
+};
+
 static void hca_init_unit_debugfs(u32 cidx)
 {
 	struct hca_chip_entry *cent;
 	struct hca_unit_entry *uent;
 	char name[32];
+	void *idx;
 	u32 uidx;
 
 	cent = &hca_chips[cidx];
 	for (uidx = 0; uidx < HCA_MAX_UNITS_PER_CHIP; uidx++) {
 		uent = &cent->units[uidx];
+		idx = (void *) (((u64) cidx) << 32 | uidx);
 		snprintf(name, sizeof(name), "unit%u", uidx);
 		uent->dir = debugfs_create_dir(name, cent->dir);
-		debugfs_create_file("enable", S_IRUSR | S_IWUSR, uent->dir,
-				    (void *) (((u64) cidx) << 32 | uidx),
-				    &hca_unit_enable_fops);
+		debugfs_create_file("enable", 0600, uent->dir, idx, &hca_unit_enable_fops);
 		debugfs_create_x64("monitor-base", 0600, uent->dir, &uent->monitor_base);
 		debugfs_create_x64("monitor-size", 0600, uent->dir, &uent->monitor_size);
 		debugfs_create_x64("counter-size", 0400, uent->dir, &uent->counter_size);
+		debugfs_create_file_unsafe("counter-data", 0400, uent->dir, idx, &hca_counter_data_fops);
 	}
 }
 
@@ -282,7 +330,7 @@ static void hca_init_chip_debugfs(void)
 		cent->id = node;
 		snprintf(name, sizeof(name), "chip%u", cent->id);
 		cent->dir = debugfs_create_dir(name, hca_debugfs_dir);
-		debugfs_create_file("enable", S_IRUSR | S_IWUSR, cent->dir,
+		debugfs_create_file("enable", 0600, cent->dir,
 				    (void *) (u64) cidx,
 				    &hca_chip_enable_fops);
 		cidx++;
