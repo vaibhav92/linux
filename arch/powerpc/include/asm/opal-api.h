@@ -1189,22 +1189,20 @@ struct opal_mpipl_fadump {
 
 struct opal_hca_chip_params {
 	__be64 page_size;
-	__be64 counter_mask;
-	__be64 cmd_sampling_rate;
-	__be64 cmd_sampling_period;
-	/* Usable only if dynamic sampling is configured */
-	__be64 upper_cmd_threshold;
-	__be64 lower_cmd_threshold;
-};
+	__be64 overflow_mask;
+	__be64 sampling_mode;
+	/* Used only if sampling mode is dynamic */
+	__be64 sampling_period;
+	__be64 sampling_upper_thresh;
+	__be64 sampling_lower_thresh;
+} __packed;
 
 struct opal_hca_unit_params {
 	__be64 monitor_base;
 	__be64 monitor_size;
 	__be64 counter_base;
-	__be64 decay_enable;
-	/* Usable only if decay is enabled */
 	__be64 decay_delay;
-};
+} __packed;
 
 #endif /* __ASSEMBLY__ */
 
