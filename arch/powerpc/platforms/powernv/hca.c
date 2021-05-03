@@ -197,7 +197,7 @@ static int hca_counter_base_init(unsigned int unit)
 	BUG_ON(uconfig->counter_size != HCA_COUNTER_SIZE_DEFAULT);
 
 	uconfig->counter_size = HCA_COUNTER_SIZE(uconfig->monitor_size);
-	nr_pages = uconfig->counter_size / PAGE_SIZE;
+	nr_pages = uconfig->counter_size / HCA_PAGE_SIZE;
 	page = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_NOWARN,
 				  pfn_to_nid(PFN_PHYS(uconfig->monitor_base)),
 				  NULL);
@@ -234,7 +234,7 @@ static int hca_counter_base_free(unsigned int unit)
 	BUG_ON(uconfig->counter_size == HCA_COUNTER_SIZE_DEFAULT);
 
 	start_pfn = PHYS_PFN(uconfig->counter_base);
-	nr_pages = uconfig->counter_size / PAGE_SIZE;
+	nr_pages = uconfig->counter_size / HCA_PAGE_SIZE;
 	free_contig_range(start_pfn, nr_pages);
 
 	pr_info("unit %u counter region free at 0x%016llx\n", unit, uconfig->counter_base);

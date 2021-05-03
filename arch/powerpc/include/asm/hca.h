@@ -20,9 +20,9 @@
 #define HCA_ENTRY_SIZE		8
 
 #ifdef CONFIG_PPC_4K_PAGES
-#define HCA_PAGE_SIZE		0
+#define HCA_PAGE_SIZE		(4 * KB)
 #else  /* CONFIG_PPC_64K_PAGES */
-#define HCA_PAGE_SIZE		1
+#define HCA_PAGE_SIZE		(64 * KB)
 #endif /* CONFIG_PPC_4K_PAGES  */
 
 /*
