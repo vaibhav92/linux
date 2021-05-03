@@ -31,39 +31,42 @@ struct hca_chip_entry {
 		u64 monitor_size;
 		u64 counter_base;
 		u64 counter_size;
-
 		bool enable;
 		struct dentry *dir;
-	} units[HCA_MAX_UNITS_PER_CHIP];
+	} unit[HCA_UNITS_PER_CHIP];
 
-	u32 id;
 	bool enable;
 	struct dentry *dir;
-};
-
-static struct hca_chip_entry *hca_chips;
-static unsigned int nr_hca_chips;
+} chip;
 
 static struct dentry *hca_debugfs_dir;
 static DEFINE_MUTEX(hca_debugfs_mutex);
 
-static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
+static int hca_counter_base_init(unsigned int unit)
 {
 	unsigned long pfn, start_pfn, nr_pages;
-	struct page *pages;
+	struct hca_unit_entry *uent;
+	struct page *page;
+
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
+	uent = &chip.unit[unit];
+	BUG_ON(uent->counter_base);
+	BUG_ON(uent->counter_size);
+	BUG_ON(!IS_ALIGNED(uent->monitor_size, PAGE_SIZE));
 
 	uent->counter_size = (uent->monitor_size / PAGE_SIZE) * HCA_ENTRY_SIZE;
-	uent->counter_size = roundup(uent->counter_size, PAGE_SIZE);
+	uent->counter_size = ALIGN(uent->counter_size, PAGE_SIZE);
 	nr_pages = uent->counter_size / PAGE_SIZE;
-	pages = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_THISNODE |
-				   __GFP_NOWARN, node, NULL);
-	if (!pages) {
+	page = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_NOWARN,
+				  pfn_to_nid(PFN_PHYS(uent->monitor_base)),
+				  NULL);
+	if (!page) {
 		uent->counter_base = 0;
 		uent->counter_size = 0;
 		return -ENOMEM;
 	}
 
-	start_pfn = page_to_pfn(pages);
+	start_pfn = page_to_pfn(page);
 	uent->counter_base = PFN_PHYS(start_pfn);
 	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++) {
 		if (IS_ALIGNED(pfn, PAGES_PER_SECTION))
@@ -71,71 +74,69 @@ static int hca_counter_base_init(struct hca_unit_entry *uent, int node)
 		clear_page(__va(PFN_PHYS(pfn)));
 	}
 
-	flush_dcache_range((unsigned long) __va(PFN_PHYS(start_pfn)),
-			   (unsigned long) __va(PFN_PHYS(start_pfn + nr_pages)));
+	flush_dcache_range((unsigned long) pfn_to_kaddr(start_pfn),
+			   (unsigned long) pfn_to_kaddr(start_pfn + nr_pages));
 
-	pr_info("chip: %u, unit: %u counter memory init at 0x%016llx\n",
-		cent->id, uidx, uent->counter_base);
+	pr_info("unit: %u counter memory init at 0x%016llx\n",
+		unit, uent->counter_base);
 
 	return 0;
 }
 
-static int hca_counter_base_free(struct hca_unit_entry *uent)
+static int hca_counter_base_free(unsigned int unit)
 {
 	unsigned long start_pfn, nr_pages;
-	struct hca_chip_entry *cent;
 	struct hca_unit_entry *uent;
 
-	cent = &hca_chips[cidx];
-	uent = &cent->units[uidx];
-
-	pr_info("chip: %u, unit: %u counter memory free at 0x%016llx\n",
-		cent->id, uidx, uent->counter_base);
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
+	uent = &chip.unit[unit];
+	BUG_ON(!uent->counter_base);
+	BUG_ON(!uent->counter_size);
 
 	start_pfn = PHYS_PFN(uent->counter_base);
 	nr_pages = uent->counter_size / PAGE_SIZE;
 	free_contig_range(start_pfn, nr_pages);
+
+	pr_info("unit: %u counter memory free at 0x%016llx\n",
+		unit, uent->counter_base);
+
 	uent->counter_base = 0;
 	uent->counter_size = 0;
 
 	return 0;
 }
 
-static int hca_unit_enable_get(void *idx, u64 *val)
+static int hca_unit_enable_get(void *data, u64 *val)
 {
-	u32 cidx, uidx;
+	unsigned int unit = (u64) data;
 
-	cidx = ((u64) idx) >> 32;
-	uidx = ((u64) idx) & U32_MAX;
-	*val = hca_chips[cidx].units[uidx].enable;
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
+	*val = chip.unit[unit].enable;
 
 	return 0;
 }
 
-static int hca_unit_enable_set(void *idx, u64 val)
+static int hca_unit_enable_set(void *data, u64 val)
 {
 	struct opal_hca_unit_params up;
-	struct hca_chip_entry *cent;
+	unsigned int unit = (u64) data;
 	struct hca_unit_entry *uent;
-	u32 cidx, uidx;
-	int rc;
+	int rc = -EAGAIN;
+
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
 
 	if (val > 1)
 		return -EINVAL;
 
-	rc = -EAGAIN;
+	uent = &chip.unit[unit];
 	mutex_lock(&hca_debugfs_mutex);
-	cidx = ((u64) idx) >> 32;
-	uidx = ((u64) idx) & U32_MAX;
-	cent = &hca_chips[cidx];
-	uent = &cent->units[uidx];
 
 	/* Check if already enabled or disabled */
 	if (!uent->enable && val) {
 		memset(&up, 0, sizeof(up));
-		rc = hca_counter_base_init(uent, cent->id);
+		rc = hca_counter_base_init(unit);
 		if (rc)
-			goto err;
+			goto out;
 
 		up.monitor_base = cpu_to_be64(uent->monitor_base);
 		up.monitor_size = cpu_to_be64(uent->monitor_size);
@@ -143,26 +144,26 @@ static int hca_unit_enable_set(void *idx, u64 val)
 		up.decay_enable = 0;	/* TODO */
 		up.decay_delay  = 0;	/* TODO */
 
-		rc = opal_hca_unit_setup(cent->id, uidx, (void *) __pa(&up));
+		rc = opal_hca_unit_setup(unit, (void *) __pa(&up));
 		if (rc != OPAL_SUCCESS) {
-			hca_counter_base_free(cidx, uidx);
+			hca_counter_base_free(unit);
 			rc = -EIO;
-			goto err;
+			goto out;
 		}
 
 	} else if (uent->enable && !val) {
-		if (opal_hca_unit_reset(cent->id, uidx) != OPAL_SUCCESS) {
+		if (opal_hca_unit_reset(unit) != OPAL_SUCCESS) {
 			rc = -EIO;
-			goto err;
+			goto out;
 		}
 
-		hca_counter_base_free(uent);
+		hca_counter_base_free(unit);
 	}
 
 	rc = 0;
 	uent->enable = val;
 
-err:
+out:
 	mutex_unlock(&hca_debugfs_mutex);
 
 	return rc;
@@ -174,13 +175,11 @@ DEFINE_SIMPLE_ATTRIBUTE(hca_unit_enable_fops,
 static ssize_t hca_counter_data_read(struct file *file, char __user *ubuf,
 				     size_t count, loff_t *ppos)
 {
+	unsigned int unit = (u64) file->private_data;
 	struct hca_unit_entry *uent;
-	u32 cidx, uidx;
 
-	cidx = ((u64) file->private_data) >> 32;
-	uidx = ((u64) file->private_data) & U32_MAX;
-	uent = &hca_chips[cidx].units[uidx];
-
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
+	uent = &chip.unit[unit];
 	if (!uent->enable)
 		return -ENXIO;
 
@@ -191,13 +190,11 @@ static ssize_t hca_counter_data_read(struct file *file, char __user *ubuf,
 
 static int hca_counter_data_mmap(struct file *file, struct vm_area_struct *vma)
 {
+	unsigned int unit = (u64) file->private_data;
 	struct hca_unit_entry *uent;
-	u32 cidx, uidx;
 
-	cidx = ((u64) file->private_data) >> 32;
-	uidx = ((u64) file->private_data) & U32_MAX;
-	uent = &hca_chips[cidx].units[uidx];
-
+	BUG_ON(unit >= HCA_UNITS_PER_CHIP);
+	uent = &chip.unit[unit];
 	if (!uent->enable)
 		return -ENXIO;
 
@@ -219,93 +216,81 @@ static const struct file_operations hca_counter_data_fops = {
 	.mmap   = hca_counter_data_mmap,
 };
 
-static void hca_init_unit_debugfs(u32 cidx)
+static void hca_init_unit_debugfs(void)
 {
-	struct hca_chip_entry *cent;
 	struct hca_unit_entry *uent;
+	unsigned int unit;
 	char name[32];
-	void *idx;
-	u32 uidx;
 
-	cent = &hca_chips[cidx];
-	for (uidx = 0; uidx < HCA_MAX_UNITS_PER_CHIP; uidx++) {
-		uent = &cent->units[uidx];
-		idx = (void *) (((u64) cidx) << 32 | uidx);
-		snprintf(name, sizeof(name), "unit%u", uidx);
-		uent->dir = debugfs_create_dir(name, cent->dir);
-		debugfs_create_file("enable", 0600, uent->dir, idx, &hca_unit_enable_fops);
-		debugfs_create_x64("monitor-base", 0600, uent->dir, &uent->monitor_base);
-		debugfs_create_x64("monitor-size", 0600, uent->dir, &uent->monitor_size);
-		debugfs_create_x64("counter-size", 0400, uent->dir, &uent->counter_size);
-		debugfs_create_file_unsafe("counter-data", 0400, uent->dir, idx, &hca_counter_data_fops);
+	for (unit = 0; unit < HCA_UNITS_PER_CHIP; unit++) {
+		uent = &chip.unit[unit];
+		snprintf(name, sizeof(name), "unit%u", unit);
+		uent->dir = debugfs_create_dir(name, hca_debugfs_dir);
+		debugfs_create_file("enable", 0600, uent->dir,
+				    (void *)(u64) unit,
+				    &hca_unit_enable_fops);
+		debugfs_create_x64("monitor-base", 0600, uent->dir,
+				   &uent->monitor_base);
+		debugfs_create_x64("monitor-size", 0600, uent->dir,
+				   &uent->monitor_size);
+		debugfs_create_x64("counter-size", 0400, uent->dir,
+				   &uent->counter_size);
+		debugfs_create_file_unsafe("counter-data", 0400, uent->dir,
+					   (void *)(u64) unit,
+					   &hca_counter_data_fops);
 	}
 }
 
-static void hca_free_unit_debugfs(u32 cidx)
+static void hca_free_unit_debugfs(void)
 {
-	struct hca_chip_entry *cent;
-	u32 uidx;
+	unsigned int unit;
 
-	cent = &hca_chips[cidx];
-	for (uidx = 0; uidx < HCA_MAX_UNITS_PER_CHIP; uidx++)
-		debugfs_remove_recursive(cent->units[uidx].dir);
+	for (unit = 0; unit < HCA_UNITS_PER_CHIP; unit++)
+		debugfs_remove_recursive(chip.unit[unit].dir);
 }
 
-static int hca_chip_enable_get(void *idx, u64 *val)
+static int hca_chip_enable_get(void *data __always_unused, u64 *val)
 {
-	u32 cidx;
-
-	cidx = ((u64) idx) & U32_MAX;
-	*val = hca_chips[cidx].enable;
-
+	*val = chip.enable;
 	return 0;
 }
 
-static int hca_chip_enable_set(void *idx, u64 val)
+static int hca_chip_enable_set(void *data __always_unused, u64 val)
 {
 	struct opal_hca_chip_params cp;
-	struct hca_chip_entry *cent;
-	u32 cidx;
-	int rc;
+	int rc = -EAGAIN;
 
 	if (val > 1)
 		return -EINVAL;
 
-	rc = -EAGAIN;
 	mutex_lock(&hca_debugfs_mutex);
-	cidx = ((u64) idx) & U32_MAX;
-	cent = &hca_chips[cidx];
 
 	/* Check if already enabled or disabled */
-	if (!cent->enable && val) {
+	if (!chip.enable && val) {
 		memset(&cp, 0, sizeof(cp));
-#ifdef CONFIG_PPC_4K_PAGES
-		cp.page_size = cpu_to_be64(HCA_PAGE_SIZE_4KB);
-#else /* CONFIG_PPC_64K_PAGES */
-		cp.page_size = cpu_to_be64(HCA_PAGE_SIZE_64KB);
-#endif
+		cp.page_size = cpu_to_be64(PAGE_SIZE);
 		cp.counter_mask = cpu_to_be64(HCA_COUNTER_MASK_DEFAULT);
 		cp.cmd_sampling_rate = cpu_to_be64(HCA_CMD_SAMPLING_RATE_DEFAULT);
 		cp.cmd_sampling_period = 0;	/* TODO */
 		cp.upper_cmd_threshold = 0;	/* TODO */
 		cp.lower_cmd_threshold = 0;	/* TODO */
 
-		rc = opal_hca_chip_setup(cent->id, (void *) __pa(&cp));
+		rc = opal_hca_chip_setup((void *) __pa(&cp));
 		if (rc != OPAL_SUCCESS) {
 			rc = -EIO;
-			goto err;
+			goto out;
 		}
 
-		hca_init_unit_debugfs(cidx);
-	} else if (cent->enable && !val) {
-		opal_hca_chip_reset(cent->id);
-		hca_free_unit_debugfs(cidx);
+		hca_init_unit_debugfs();
+	} else if (chip.enable && !val) {
+		opal_hca_chip_reset();
+		hca_free_unit_debugfs();
 	}
 
 	rc = 0;
-	cent->enable = val;
+	chip.enable = val;
 
-err:
+out:
 	mutex_unlock(&hca_debugfs_mutex);
 
 	return rc;
@@ -316,24 +301,9 @@ DEFINE_SIMPLE_ATTRIBUTE(hca_chip_enable_fops,
 
 static void hca_init_chip_debugfs(void)
 {
-	struct hca_chip_entry *cent;
-	u32 node, cidx;
-	char name[32];
-
 	hca_debugfs_dir = debugfs_create_dir("hca", powerpc_debugfs_root);
-	cidx = 0;
-
-	/* TODO: use device tree to find chip information */
-	for_each_online_node(node) {
-		cent = &hca_chips[cidx];
-		cent->id = node;
-		snprintf(name, sizeof(name), "chip%u", cent->id);
-		cent->dir = debugfs_create_dir(name, hca_debugfs_dir);
-		debugfs_create_file("enable", 0600, cent->dir,
-				    (void *) (u64) cidx,
-				    &hca_chip_enable_fops);
-		cidx++;
-	}
+	debugfs_create_file("enable", 0600, hca_debugfs_dir, NULL,
+			    &hca_chip_enable_fops);
 }
 
 static int hca_init(void)
@@ -343,11 +313,8 @@ static int hca_init(void)
 		return -ENOTSUPP;
 
 	pr_info("hot-cold affinity init\n");
-
-	/* TODO: use device tree to find chip information */
-	nr_hca_chips = nr_online_nodes;
-	hca_chips = kzalloc(nr_hca_chips * sizeof(*hca_chips), GFP_KERNEL);
 	hca_init_chip_debugfs();
+
 	return 0;
 }
 machine_device_initcall(powernv, hca_init);
