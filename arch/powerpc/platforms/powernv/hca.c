@@ -384,8 +384,8 @@ static void hca_chip_config_debugfs_init(void)
 	debugfs_create_u64("overflow-mask", 0600, config.root, &config.overflow_mask);
 	debugfs_create_u64("sampling-mode", 0600, config.root, &config.sampling_mode);
 	debugfs_create_u64("sampling-period", 0600, config.root, &config.sampling_period);
-	debugfs_create_u64("sampling-upper-thresh", 0600, config.root, &config.sampling_upper_thresh);
-	debugfs_create_u64("sampling-lower-thresh", 0600, config.root, &config.sampling_lower_thresh);
+	debugfs_create_u64("sampling-thresh-upper", 0600, config.root, &config.sampling_upper_thresh);
+	debugfs_create_u64("sampling-thresh-lower", 0600, config.root, &config.sampling_lower_thresh);
 }
 
 static int hca_init(void)
