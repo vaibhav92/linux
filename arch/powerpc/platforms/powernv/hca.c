@@ -218,6 +218,9 @@ static int hca_counter_base_init(unsigned int engine)
 	flush_dcache_range((unsigned long) pfn_to_kaddr(start_pfn),
 			   (unsigned long) pfn_to_kaddr(start_pfn + nr_pages));
 
+	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++)
+		__SetPageOffline(pfn_to_page(pfn));
+
 	pr_info("engine %u counter region init at 0x%016llx\n", engine, econfig->counter_base);
 
 	return 0;
@@ -225,7 +228,7 @@ static int hca_counter_base_init(unsigned int engine)
 
 static int hca_counter_base_free(unsigned int engine)
 {
-	unsigned long start_pfn, nr_pages;
+	unsigned long pfn, start_pfn, nr_pages;
 	struct engine_config *econfig;
 
 	BUG_ON(engine >= HCA_ENGINES_PER_SOCKET);
@@ -235,6 +238,10 @@ static int hca_counter_base_free(unsigned int engine)
 
 	start_pfn = PHYS_PFN(econfig->counter_base);
 	nr_pages = econfig->counter_size / HCA_PAGE_SIZE;
+
+	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++)
+		__ClearPageOffline(pfn_to_page(pfn));
+
 	free_contig_range(start_pfn, nr_pages);
 
 	pr_info("engine %u counter region free at 0x%016llx\n", engine, econfig->counter_base);
