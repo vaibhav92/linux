@@ -214,10 +214,10 @@
 #define OPAL_SECVAR_GET				176
 #define OPAL_SECVAR_GET_NEXT			177
 #define OPAL_SECVAR_ENQUEUE_UPDATE		178
-#define OPAL_HCA_CHIP_SETUP			181
-#define OPAL_HCA_CHIP_RESET			182
-#define OPAL_HCA_UNIT_SETUP			183
-#define OPAL_HCA_UNIT_RESET			184
+#define OPAL_HCA_SOCKET_SETUP			181
+#define OPAL_HCA_SOCKET_RESET			182
+#define OPAL_HCA_ENGINE_SETUP			183
+#define OPAL_HCA_ENGINE_RESET			184
 #define OPAL_LAST				184
 
 #define QUIESCE_HOLD			1 /* Spin all calls at entry */
@@ -1187,7 +1187,7 @@ struct opal_mpipl_fadump {
 	struct	opal_mpipl_region region[];
 } __packed;
 
-struct opal_hca_chip_params {
+struct opal_hca_socket_params {
 	__be64 page_size;
 	__be64 overflow_mask;
 	__be64 sampling_mode;
@@ -1197,7 +1197,7 @@ struct opal_hca_chip_params {
 	__be64 sampling_lower_thresh;
 } __packed;
 
-struct opal_hca_unit_params {
+struct opal_hca_engine_params {
 	__be64 monitor_base;
 	__be64 monitor_size;
 	__be64 counter_base;
