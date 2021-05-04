@@ -68,9 +68,11 @@ static int hca_engine_setup(unsigned int engine)
 	econfig->decay_delay = HCA_DECAY_DELAY(econfig->decay_delay);
 
 	/* Init counter region */
-	if (hca_counter_base_init(engine))
+	if (hca_counter_base_init(engine)) {
 		/* TODO: error handling */
 		hca_engine_reset(engine);
+		return -EIO;
+	}
 
 	/* Setup OPAL call parameters */
 	memset(&up, 0, sizeof(up));
