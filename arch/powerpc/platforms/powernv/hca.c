@@ -366,8 +366,8 @@ static void hca_unit_config_debugfs_init(unsigned int unit)
 	uconfig->root = debugfs_create_dir(name, config.root);
 	debugfs_create_file("enable", 0600, uconfig->root, (void *)(u64) unit, &hca_unit_enable_fops);
 	debugfs_create_x64("monitor-base", 0600, uconfig->root, &uconfig->monitor_base);
-	debugfs_create_x64("monitor-size", 0600, uconfig->root, &uconfig->monitor_size);
-	debugfs_create_x64("counter-size", 0400, uconfig->root, &uconfig->counter_size);
+	debugfs_create_u64("monitor-size", 0600, uconfig->root, &uconfig->monitor_size);
+	debugfs_create_u64("counter-size", 0400, uconfig->root, &uconfig->counter_size);
 	debugfs_create_file_unsafe("counter-data", 0400, uconfig->root, (void *)(u64) unit, &hca_unit_counter_data_fops);
 }
 
