@@ -369,6 +369,7 @@ static void hca_unit_config_debugfs_init(unsigned int unit)
 	debugfs_create_u64("monitor-size", 0600, uconfig->root, &uconfig->monitor_size);
 	debugfs_create_u64("counter-size", 0400, uconfig->root, &uconfig->counter_size);
 	debugfs_create_file_unsafe("counter-data", 0400, uconfig->root, (void *)(u64) unit, &hca_unit_counter_data_fops);
+	debugfs_create_u64("decay-delay", 0600, uconfig->root, &uconfig->decay_delay);
 }
 
 static void hca_unit_config_debugfs_free(unsigned int unit)
