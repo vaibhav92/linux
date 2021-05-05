@@ -105,7 +105,7 @@ static int hca_engine_reset(unsigned int engine)
 	opal_hca_engine_reset(engine);
 
 	/* Free counter region if engine is enabled */
-	if (econfig->enable)
+	if (econfig->counter_size)
 		hca_counter_base_free(engine);
 
 	/* Reset engine configuration */
