@@ -191,6 +191,7 @@ static int hca_counter_base_init(unsigned int engine)
 	unsigned long pfn, start_pfn, nr_pages;
 	struct engine_config *econfig;
 	struct page *page;
+	int nid;
 
 	BUG_ON(engine >= HCA_ENGINES_PER_SOCKET);
 	econfig = &sconfig.engine[engine];
@@ -198,11 +199,11 @@ static int hca_counter_base_init(unsigned int engine)
 	BUG_ON(econfig->counter_base != HCA_COUNTER_BASE_DEFAULT);
 	BUG_ON(econfig->counter_size != HCA_COUNTER_SIZE_DEFAULT);
 
+	nid = pfn_to_nid(PFN_PHYS(econfig->monitor_base));
 	econfig->counter_size = HCA_COUNTER_SIZE(econfig->monitor_size);
 	nr_pages = econfig->counter_size / HCA_PAGE_SIZE;
 	page = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_NOWARN,
-				  pfn_to_nid(PFN_PHYS(econfig->monitor_base)),
-				  NULL);
+				  nid, NULL);
 	if (!page) {
 		econfig->counter_base = HCA_COUNTER_BASE_DEFAULT;
 		econfig->counter_size = HCA_COUNTER_SIZE_DEFAULT;
