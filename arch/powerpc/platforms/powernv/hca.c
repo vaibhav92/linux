@@ -384,7 +384,11 @@ static void hca_engine_config_debugfs_init(unsigned int engine)
 
 static void hca_engine_config_debugfs_free(unsigned int engine)
 {
-	debugfs_remove_recursive(sconfig.engine[engine].root);
+	struct engine_config *econfig;
+
+	econfig = &sconfig.engine[engine];
+	if (econfig->enable)
+		debugfs_remove_recursive(econfig->root);
 }
 
 static void hca_socket_config_debugfs_init(void)
