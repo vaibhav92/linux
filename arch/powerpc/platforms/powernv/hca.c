@@ -371,7 +371,11 @@ static void hca_engine_config_debugfs_init(unsigned int engine)
 	struct engine_config *econfig;
 	char name[32];
 
+	BUG_ON(engine >= HCA_ENGINES_PER_SOCKET);
 	econfig = &sconfig.engine[engine];
+	BUG_ON(econfig->enable);
+	BUG_ON(sconfig.enable);
+
 	snprintf(name, sizeof(name), "engine%u", engine);
 	econfig->root = debugfs_create_dir(name, sconfig.root);
 	debugfs_create_file("enable", 0600, econfig->root, (void *)(u64) engine, &hca_engine_enable_fops);
@@ -386,9 +390,13 @@ static void hca_engine_config_debugfs_free(unsigned int engine)
 {
 	struct engine_config *econfig;
 
+	BUG_ON(engine >= HCA_ENGINES_PER_SOCKET);
 	econfig = &sconfig.engine[engine];
-	if (econfig->enable)
-		debugfs_remove_recursive(econfig->root);
+	BUG_ON(econfig->enable);
+	BUG_ON(sconfig.enable);
+
+	debugfs_remove_recursive(econfig->root);
+	econfig->root = NULL;
 }
 
 static void hca_socket_config_debugfs_init(void)
