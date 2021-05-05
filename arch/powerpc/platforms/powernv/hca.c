@@ -214,11 +214,11 @@ static int hca_counter_base_init(unsigned int engine)
 	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++) {
 		if (IS_ALIGNED(pfn, PAGES_PER_SECTION))
 			cond_resched();
-		clear_page(pfn_to_kaddr(pfn));
+		clear_page(__va(PFN_PHYS(pfn)));
 	}
 
-	flush_dcache_range((unsigned long) pfn_to_kaddr(start_pfn),
-			   (unsigned long) pfn_to_kaddr(start_pfn + nr_pages));
+	flush_dcache_range((unsigned long) __va(PFN_PHYS(start_pfn)),
+			   (unsigned long) __va(PFN_PHYS(start_pfn + nr_pages)));
 
 	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++)
 		__SetPageOffline(pfn_to_page(pfn));
