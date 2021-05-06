@@ -222,10 +222,8 @@ static int hca_chip_reset(void)
 	/* Reset engine configuration */
 	for (engine = 0; engine < HCA_ENGINES_PER_CHIP; engine++) {
 		rc = hca_engine_reset(engine);
-		if (rc == OPAL_PARAMETER)
-			return -EINVAL;
-		else if (rc != OPAL_SUCCESS)
-			return -EIO;
+		if (rc)
+			return rc;
 
 		hca_engine_config_debugfs_free(engine);
 	}
@@ -502,7 +500,7 @@ static int hca_init(void)
 	pr_info("hot-cold affinity init\n");
 	memset(&cconfig, 0, sizeof(cconfig));
 	rc = hca_chip_reset();
-	if (!rc)
+	if (rc)
 		return rc;
 
 	hca_chip_config_debugfs_init();
