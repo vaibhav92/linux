@@ -312,10 +312,8 @@ static ssize_t hca_engine_counter_data_read(struct file *file,
 
 	BUG_ON(engine >= HCA_ENGINES_PER_CHIP);
 	econfig = &cconfig.engine[engine];
-	BUG_ON(!econfig->counter_base);
-	BUG_ON(!econfig->counter_size);
 
-	if (!econfig->enable)
+	if (!econfig->enable || !econfig->counter_size)
 		return -ENXIO;
 
 	return simple_read_from_buffer(ubuf, count, ppos,
@@ -331,10 +329,8 @@ static int hca_engine_counter_data_mmap(struct file *file,
 
 	BUG_ON(engine >= HCA_ENGINES_PER_CHIP);
 	econfig = &cconfig.engine[engine];
-	BUG_ON(!econfig->counter_base);
-	BUG_ON(!econfig->counter_size);
 
-	if (!econfig->enable)
+	if (!econfig->enable || !econfig->counter_size)
 		return -ENXIO;
 
 	if ((econfig->counter_size < (vma->vm_end - vma->vm_start)) ||
@@ -348,8 +344,26 @@ static int hca_engine_counter_data_mmap(struct file *file,
 			       vma->vm_end - vma->vm_start, vma->vm_page_prot);
 }
 
+static loff_t hca_engine_counter_data_llseek(struct file *file, loff_t offset,
+					     int whence)
+{
+	unsigned int engine = (u64) file->private_data;
+	struct engine_config *econfig;
+
+	BUG_ON(engine >= HCA_ENGINES_PER_CHIP);
+	econfig = &cconfig.engine[engine];
+
+	if (!econfig->enable || !econfig->counter_size)
+		return -ENXIO;
+
+	if ((file->f_pos + offset) >= econfig->counter_size)
+		return -EINVAL;
+
+	return default_llseek(file, offset, whence);
+}
+
 static const struct file_operations hca_engine_counter_data_fops = {
-	.llseek = default_llseek,
+	.llseek = hca_engine_counter_data_llseek,
 	.read   = hca_engine_counter_data_read,
 	.open   = simple_open,
 	.mmap   = hca_engine_counter_data_mmap,
