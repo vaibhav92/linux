@@ -16,7 +16,7 @@
 #define GB	(1024 * MB)
 #define TB	(1024 * GB)
 
-#define HCA_ENGINES_PER_SOCKET	2
+#define HCA_ENGINES_PER_CHIP	2
 #define HCA_ENTRY_SIZE		8
 
 #ifdef CONFIG_PPC_4K_PAGES
