@@ -16,8 +16,6 @@
 #include <asm/opal.h>
 #include <asm/hca.h>
 
-#define for_each_chip	for_each_node
-
 /* Per-chip configuration */
 struct chip_config {
 	bool enable;
@@ -55,6 +53,18 @@ static int hca_chip_setup(void);
 static int hca_chip_reset(void);
 static void hca_chip_config_debugfs_init(void);
 
+static inline unsigned int node_to_chip(unsigned int node)
+{
+	unsigned int cpu = cpumask_first(cpumask_of_node(node));
+	return cpu_to_chip_id(cpu);
+}
+
+static inline unsigned int phys_to_chip(unsigned long addr)
+{
+	unsigned int node = pfn_to_nid(PHYS_PFN(addr));
+	return node_to_chip(node);
+}
+
 static int hca_engine_setup(unsigned int engine)
 {
 	struct opal_hca_engine_params up;
@@ -90,7 +100,7 @@ static int hca_engine_setup(unsigned int engine)
 	 * Use an engine from the chip behind which the physical
 	 * memory range specified by the monitor region lies
 	 */
-	chip = pfn_to_nid(PFN_PHYS(econfig->monitor_base));
+	chip = phys_to_chip(econfig->monitor_base);
 	rc = opal_hca_engine_setup(chip, engine, (void *) __pa(&up));
 	if (rc != OPAL_SUCCESS) {
 		hca_engine_reset(engine);
@@ -108,14 +118,15 @@ static int hca_engine_setup(unsigned int engine)
 static int hca_engine_reset(unsigned int engine)
 {
 	struct engine_config *econfig;
-	unsigned int chip;
+	unsigned int node, chip;
 	int rc;
 
 	BUG_ON(engine >= HCA_ENGINES_PER_CHIP);
 	econfig = &cconfig.engine[engine];
 
 	/* Reset engine configuration */
-	for_each_chip(chip) {
+	for_each_node(node) {
+		chip = node_to_chip(node);
 		rc = opal_hca_engine_reset(chip, engine);
 		if (rc == OPAL_PARAMETER)
 			return -EINVAL;
@@ -140,8 +151,8 @@ static int hca_engine_reset(unsigned int engine)
 
 static int hca_chip_setup(void)
 {
+	unsigned int node, chip, engine;
 	struct opal_hca_chip_params cp;
-	unsigned int chip, engine;
 	int rc;
 
 	BUG_ON(cconfig.enable);
@@ -164,7 +175,8 @@ static int hca_chip_setup(void)
 	cp.sampling_lower_thresh = cpu_to_be64(cconfig.sampling_lower_thresh);
 
 	/* Reset chip configuration */
-	for_each_chip(chip) {
+	for_each_node(node) {
+		chip = node_to_chip(node);
 		rc = opal_hca_chip_setup(chip, (void *) __pa(&cp));
 		if (rc != OPAL_SUCCESS) {
 			opal_hca_chip_reset(chip);
@@ -186,11 +198,12 @@ static int hca_chip_setup(void)
 
 static int hca_chip_reset(void)
 {
-	unsigned int chip, engine;
+	unsigned int node, chip, engine;
 	int rc;
 
 	/* Reset chip configuration */
-	for_each_chip(chip) {
+	for_each_node(node) {
+		chip = node_to_chip(node);
 		rc = opal_hca_chip_reset(chip);
 		if (rc == OPAL_PARAMETER)
 			return -EINVAL;
@@ -237,7 +250,7 @@ static int hca_counter_base_init(unsigned int engine)
 	 * Allocate memory from the node (chip) behind which the physical
 	 * memory range specified by the monitor region lies
 	 */
-	node = pfn_to_nid(PFN_PHYS(econfig->monitor_base));
+	node = pfn_to_nid(PHYS_PFN(econfig->monitor_base));
 	econfig->counter_size = HCA_COUNTER_SIZE(econfig->monitor_size);
 	nr_pages = econfig->counter_size / HCA_PAGE_SIZE;
 	page = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_THISNODE |
