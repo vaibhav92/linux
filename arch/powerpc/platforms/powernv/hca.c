@@ -65,10 +65,18 @@ static inline unsigned int phys_to_chip(unsigned long addr)
 	return node_to_chip(node);
 }
 
+static inline unsigned long node_base(unsigned long addr)
+{
+	unsigned int node = pfn_to_nid(PHYS_PFN(addr));
+	unsigned long pfn = NODE_DATA(node)->node_start_pfn;
+	return PFN_PHYS(pfn);
+}
+
 static int hca_engine_setup(unsigned int engine)
 {
 	struct opal_hca_engine_params up;
 	struct engine_config *econfig;
+	unsigned long base;
 	unsigned int chip;
 	int rc;
 
@@ -82,7 +90,14 @@ static int hca_engine_setup(unsigned int engine)
 	econfig->monitor_size = HCA_MONITOR_SIZE(econfig->monitor_size);
 	econfig->decay_delay = HCA_DECAY_DELAY(econfig->decay_delay);
 
-	/* Init counter region */
+	/*
+	 * Use an engine from the chip behind which the physical
+	 * memory range specified by the monitor region lies
+	 */
+	chip = phys_to_chip(econfig->monitor_base);
+	base = node_base(econfig->monitor_base);
+
+	/* Init region */
 	rc = hca_counter_base_init(engine);
 	if (rc) {
 		hca_engine_reset(engine);
@@ -91,16 +106,11 @@ static int hca_engine_setup(unsigned int engine)
 
 	/* Setup OPAL call parameters */
 	memset(&up, 0, sizeof(up));
-	up.monitor_base = cpu_to_be64(econfig->monitor_base);
+	up.monitor_base = cpu_to_be64(econfig->monitor_base - base);
 	up.monitor_size = cpu_to_be64(econfig->monitor_size);
-	up.counter_base = cpu_to_be64(econfig->counter_base);
+	up.counter_base = cpu_to_be64(econfig->counter_base - base);
 	up.decay_delay  = cpu_to_be64(econfig->decay_delay);
 
-	/*
-	 * Use an engine from the chip behind which the physical
-	 * memory range specified by the monitor region lies
-	 */
-	chip = phys_to_chip(econfig->monitor_base);
 	rc = opal_hca_engine_setup(chip, engine, (void *) __pa(&up));
 	if (rc != OPAL_SUCCESS) {
 		hca_engine_reset(engine);
