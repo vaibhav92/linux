@@ -273,6 +273,9 @@ static int hca_counter_base_init(unsigned int engine)
 	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++)
 		__SetPageOffline(pfn_to_page(pfn));
 
+	flush_tlb_kernel_range((unsigned long) __va(PFN_PHYS(start_pfn)),
+			       (unsigned long) __va(PFN_PHYS(start_pfn + nr_pages)));
+
 	pr_info("engine %u counter region init at 0x%016llx\n",
 		engine, econfig->counter_base);
 
