@@ -235,6 +235,7 @@ static int hca_counter_base_init(unsigned int engine)
 {
 	unsigned long pfn, start_pfn, nr_pages;
 	struct engine_config *econfig;
+	nodemask_t nodemask;
 	struct page *page;
 	int node;
 
@@ -245,10 +246,14 @@ static int hca_counter_base_init(unsigned int engine)
 	BUG_ON(econfig->counter_size != HCA_COUNTER_SIZE_DEFAULT);
 
 	/*
-	 * Allocate memory from the node (chip) behind which the physical
-	 * memory range specified by the monitor region lies
+	 * Allocate memory any node except the node behind which the
+	 * physical memory range specified by the monitor region lies
 	 */
+	nodemask = node_states[N_MEMORY];
 	node = pfn_to_nid(PHYS_PFN(econfig->monitor_base));
+	node_clear(node, nodemask);
+	node = first_node(nodemask);
+
 	econfig->counter_size = HCA_COUNTER_SIZE(econfig->monitor_size);
 	nr_pages = econfig->counter_size / HCA_PAGE_SIZE;
 	page = alloc_contig_pages(nr_pages, GFP_KERNEL | __GFP_THISNODE |
