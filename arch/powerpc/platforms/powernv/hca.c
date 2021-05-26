@@ -321,6 +321,24 @@ static ssize_t hca_engine_counter_data_read(struct file *file,
 				       econfig->counter_size);
 }
 
+static ssize_t hca_engine_counter_data_write(struct file *file,
+					    const char __user *ubuf,
+					    size_t count, loff_t *ppos)
+{
+	unsigned int engine = (u64) file->private_data;
+	struct engine_config *econfig;
+
+	BUG_ON(engine >= HCA_ENGINES_PER_CHIP);
+	econfig = &cconfig.engine[engine];
+
+	if (!econfig->enable || !econfig->counter_size)
+		return -ENXIO;
+
+	return simple_write_to_buffer(__va(econfig->counter_base),
+				       econfig->counter_size, ppos,
+				       ubuf, count);
+}
+
 static int hca_engine_counter_data_mmap(struct file *file,
 					struct vm_area_struct *vma)
 {
@@ -365,6 +383,7 @@ static loff_t hca_engine_counter_data_llseek(struct file *file, loff_t offset,
 static const struct file_operations hca_engine_counter_data_fops = {
 	.llseek = hca_engine_counter_data_llseek,
 	.read   = hca_engine_counter_data_read,
+	.write   = hca_engine_counter_data_write,
 	.open   = simple_open,
 	.mmap   = hca_engine_counter_data_mmap,
 };
@@ -501,15 +520,19 @@ static int hca_init(void)
 
 	/* Validate hardware support */
 	if (!cpu_has_feature(CPU_FTR_ARCH_31) ||
-	    PVR_VER(mfspr(SPRN_PVR)) != PVR_POWER10)
+	    PVR_VER(mfspr(SPRN_PVR)) != PVR_POWER10) {
+		pr_info("HCA not supported on this arch");
 		return -ENODEV;
+	}
 
 	/* Validate firmware support */
 	if (!opal_check_token(OPAL_HCA_CHIP_SETUP) ||
 	    !opal_check_token(OPAL_HCA_CHIP_RESET) ||
 	    !opal_check_token(OPAL_HCA_ENGINE_SETUP) ||
-	    !opal_check_token(OPAL_HCA_ENGINE_RESET))
+	    !opal_check_token(OPAL_HCA_ENGINE_RESET)) {
+		pr_info("Firmware doesnt support HCA");
 		return -ENOTSUPP;
+	}
 
 	pr_info("hot-cold affinity init\n");
 	memset(&cconfig, 0, sizeof(cconfig));
