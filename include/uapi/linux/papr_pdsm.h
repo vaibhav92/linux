@@ -2,13 +2,13 @@
 /*
  * PAPR nvDimm Specific Methods (PDSM) and structs for libndctl
  *
- * (C) Copyright IBM 2020
+ * (C) Copyright IBM 2020-2021
  *
  * Author: Vaibhav Jain <vaibhav at linux.ibm.com>
  */
 
-#ifndef _UAPI_ASM_POWERPC_PAPR_PDSM_H_
-#define _UAPI_ASM_POWERPC_PAPR_PDSM_H_
+#ifndef _UAPI_LINUX_PAPR_PDSM_H_
+#define _UAPI_LINUX_PAPR_PDSM_H_
 
 #include <linux/types.h>
 #include <linux/ndctl.h>
@@ -144,4 +144,4 @@ struct nd_pkg_pdsm {
 	union nd_pdsm_payload payload;
 } __packed;
 
-#endif /* _UAPI_ASM_POWERPC_PAPR_PDSM_H_ */
+#endif /* _UAPI_LINUX_PAPR_PDSM_H_ */

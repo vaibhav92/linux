@@ -13,6 +13,7 @@
 #include <nd-core.h>
 #include <linux/printk.h>
 #include <linux/seq_buf.h>
+#include <linux/papr_scm.h>
 
 #include "../watermark.h"
 #include "nfit_test.h"
