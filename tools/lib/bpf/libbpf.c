@@ -168,6 +168,25 @@ int libbpf_set_strict_mode(enum libbpf_strict_mode mode)
 	return 0;
 }
 
+__u32 libbpf_major_version(void)
+{
+	return LIBBPF_MAJOR_VERSION;
+}
+
+__u32 libbpf_minor_version(void)
+{
+	return LIBBPF_MINOR_VERSION;
+}
+
+const char *libbpf_version_string(void)
+{
+#define __S(X) #X
+#define _S(X) __S(X)
+	return  "v" _S(LIBBPF_MAJOR_VERSION) "." _S(LIBBPF_MINOR_VERSION);
+#undef _S
+#undef __S
+}
+
 enum kern_feature_id {
 	/* v4.14: kernel support for program & map names. */
 	FEAT_PROG_NAME,
@@ -8296,12 +8315,12 @@ __u32 bpf_program__flags(const struct bpf_program *prog)
 	return prog->prog_flags;
 }
 
-int bpf_program__set_extra_flags(struct bpf_program *prog, __u32 extra_flags)
+int bpf_program__set_flags(struct bpf_program *prog, __u32 flags)
 {
 	if (prog->obj->loaded)
 		return libbpf_err(-EBUSY);
 
-	prog->prog_flags |= extra_flags;
+	prog->prog_flags = flags;
 	return 0;
 }
 
