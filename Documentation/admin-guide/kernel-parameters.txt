@@ -600,6 +600,14 @@
 			loops can be debugged more effectively on production
 			systems.
 
+	clocksource.max_cswd_coarse_reads= [KNL]
+			Number of consecutive clocksource_watchdog()
+			coarse reads (that is, clocksource reads that
+			were unduly delayed) that are permitted before
+			the kernel complains (gently).	Set to a value
+			less than or equal to zero to suppress these
+			complaints.
+
 	clocksource.max_cswd_read_retries= [KNL]
 			Number of clocksource_watchdog() retries due to
 			external delays before the clock will be marked
@@ -4489,10 +4497,6 @@
 			on rcutree.qhimark at boot time and to zero to
 			disable more aggressive help enlistment.
 
-	rcutree.rcu_idle_gp_delay= [KNL]
-			Set wakeup interval for idle CPUs that have
-			RCU callbacks (RCU_FAST_NO_HZ=y).
-
 	rcutree.rcu_kick_kthreads= [KNL]
 			Cause the grace-period kthread to get an extra
 			wake_up() if it sleeps three times longer than
@@ -4603,8 +4607,12 @@
 			in seconds.
 
 	rcutorture.fwd_progress= [KNL]
-			Enable RCU grace-period forward-progress testing
+			Specifies the number of kthreads to be used
+			for  RCU grace-period forward-progress testing
 			for the types of RCU supporting this notion.
+			Defaults to 1 kthread, values less than zero or
+			greater than the number of CPUs cause the number
+			of CPUs to be used.
 
 	rcutorture.fwd_progress_div= [KNL]
 			Specify the fraction of a CPU-stall-warning
@@ -4804,6 +4812,13 @@
 			post-boot attempt at an expedited RCU grace
 			period to instead use normal non-expedited
 			grace-period processing.
+
+	rcupdate.rcu_task_enqueue_lim= [KNL]
+			Set the number of callback queues to use for the
+			RCU Tasks family of RCU flavors.  The default
+			of -1 allows this to be automatically (and
+			dynamically) adjusted.	This parameter is intended
+			for use in testing.
 
 	rcupdate.rcu_task_ipi_delay= [KNL]
 			Set time in jiffies during which RCU tasks will
