@@ -903,6 +903,12 @@ config LRU_GEN
 	  Documentation/admin-guide/mm/multigen_lru.rst and
 	  Documentation/vm/multigen_lru.rst for details.
 
+config LRU_GEN_ENABLED
+	bool "Enable by default"
+	depends on LRU_GEN
+	help
+	  This option enables the multigenerational LRU by default.
+
 config NR_LRU_GENS
 	int "Max number of generations"
 	depends on LRU_GEN
