@@ -514,7 +514,7 @@ static void hca_chip_config_debugfs_init(void)
 			   &cconfig.sampling_lower_thresh);
 }
 
-static int hca_init(void)
+static int hca_powernv_init(void)
 {
 	int rc;
 
@@ -544,4 +544,16 @@ static int hca_init(void)
 
 	return 0;
 }
-machine_device_initcall(powernv, hca_init);
+
+
+static int hca_pseries_init(void)
+{
+	pr_info("hot-cold affinity init\n");
+	memset(&cconfig, 0, sizeof(cconfig));
+	hca_chip_config_debugfs_init();
+
+	return 0;
+}
+
+machine_device_initcall(powernv, hca_powernv_init);
+machine_device_initcall(pseries, hca_pseries_init);
