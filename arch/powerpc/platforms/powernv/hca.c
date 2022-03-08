@@ -11,7 +11,6 @@
 #include <linux/fs.h>
 #include <linux/debugfs.h>
 #include <asm/machdep.h>
-#include <asm/debugfs.h>
 #include <asm/cacheflush.h>
 #include <asm/opal.h>
 #include <asm/hca.h>
@@ -108,7 +107,8 @@ static int hca_engine_setup(unsigned int engine)
 			return -EINVAL;
 		return -EIO;
 	}
-
+	pr_info("HCA: Chip %d Engine %d Enabled \n",
+		chip, engine);
 	/* Finally, mark as enabled */
 	econfig->enable = true;
 
@@ -499,7 +499,7 @@ static void hca_engine_config_debugfs_free(unsigned int engine)
 static void hca_chip_config_debugfs_init(void)
 {
 	/* Setup chip configuration debugfs entries */
-	cconfig.root = debugfs_create_dir("hca", powerpc_debugfs_root);
+	cconfig.root = debugfs_create_dir("hca", arch_debugfs_dir);
 	debugfs_create_file("enable", 0600, cconfig.root, NULL,
 			    &hca_chip_enable_fops);
 	debugfs_create_u64("overflow-mask", 0600, cconfig.root,
