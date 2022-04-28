@@ -2644,7 +2644,7 @@ again:
 				anon_vma_unlock_read(anon_vma);
 				return;
 			}
-			if (rwc->done && rwc->done(folio)) {
+			if (rwc->done && rwc->done(folio, rwc->arg)) {
 				anon_vma_unlock_read(anon_vma);
 				return;
 			}

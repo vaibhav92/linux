@@ -2329,7 +2329,7 @@ static void rmap_walk_file(struct folio *folio,
 
 		if (!rwc->rmap_one(folio, vma, address, rwc->arg))
 			goto done;
-		if (rwc->done && rwc->done(folio))
+		if (rwc->done && rwc->done(folio, rwc->arg))
 			goto done;
 	}
 

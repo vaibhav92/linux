@@ -167,6 +167,9 @@ struct scan_control {
 
 	/* for recording the reclaimed slab by now */
 	struct reclaim_state reclaim_state;
+
+	/* cached copy of per nid vmscan ops */
+	struct vmscan_ops *vmscan_ops;
 };
 
 #ifdef ARCH_HAS_PREFETCHW
@@ -1389,10 +1392,17 @@ static enum page_references folio_check_references(struct folio *folio,
 {
 	int referenced_ptes, referenced_folio;
 	unsigned long vm_flags;
+        struct vmscan_ops *ops=sc->vmscan_ops;
 
-	referenced_ptes = folio_referenced(folio, 1, sc->target_mem_cgroup,
+	if (ops && ops->folio_referenced) {
+		referenced_ptes = ops->folio_referenced(folio, 1, sc->target_mem_cgroup,
+							    &vm_flags);
+		referenced_folio = ops->folio_test_clear_referenced(folio);
+	} else {
+		referenced_ptes = folio_referenced(folio, 1, sc->target_mem_cgroup,
 					   &vm_flags);
-	referenced_folio = folio_test_clear_referenced(folio);
+		referenced_folio = folio_test_clear_referenced(folio);
+	}
 
 	/*
 	 * The supposedly reclaimable folio was found to be in a VM_LOCKED vma.
@@ -1686,7 +1696,7 @@ retry:
 		case PAGEREF_RECLAIM_CLEAN:
 			; /* try to reclaim the page below */
 		}
-
+		
 		/*
 		 * Before reclaiming the page, try to relocate
 		 * its contents to another node.
@@ -2471,6 +2481,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	while (!list_empty(&l_hold)) {
 		struct folio *folio;
 		struct page *page;
+		int referenced_ptes;
 
 		cond_resched();
 		folio = lru_to_folio(&l_hold);
@@ -2490,8 +2501,15 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			}
 		}
 
-		if (folio_referenced(folio, 0, sc->target_mem_cgroup,
-				     &vm_flags)) {
+		if (sc->vmscan_ops && sc->vmscan_ops->folio_referenced)
+			referenced_ptes = sc->vmscan_ops->folio_referenced(
+				folio, 0, sc->target_mem_cgroup, &vm_flags);
+		else
+			referenced_ptes = folio_referenced(folio,0,
+							   sc->target_mem_cgroup,
+							   &vm_flags);
+
+		if (referenced_ptes) {
 			/*
 			 * Identify referenced, file-backed active pages and
 			 * give them one more trip around the active list. So
@@ -2566,6 +2584,8 @@ unsigned long reclaim_pages(struct list_head *page_list)
 			continue;
 		}
 
+		/* Fetch the scanops from arch code and pass it on skrink_page_list() */
+		sc.vmscan_ops = arch_vmscan_ops(page_to_nid(page));
 		nr_reclaimed += shrink_page_list(&node_page_list,
 						NODE_DATA(nid),
 						&sc, &dummy_stat, false);
@@ -5888,7 +5908,6 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	bool reclaimable = false;
 
 	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
-
 again:
 	memset(&sc->nr, 0, sizeof(sc->nr));
 
@@ -6454,6 +6473,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 		.may_unmap = 1,
 		.reclaim_idx = MAX_NR_ZONES - 1,
 		.may_swap = !noswap,
+		.vmscan_ops = arch_vmscan_ops(pgdat->node_id),
 	};
 
 	WARN_ON_ONCE(!current->reclaim_state);
@@ -6758,6 +6778,7 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int highest_zoneidx)
 		.gfp_mask = GFP_KERNEL,
 		.order = order,
 		.may_unmap = 1,
+		.vmscan_ops = arch_vmscan_ops(pgdat->node_id),
 	};
 
 	set_task_reclaim_state(current, &sc.reclaim_state);

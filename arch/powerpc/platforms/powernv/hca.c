@@ -15,13 +15,6 @@
 #include <asm/opal.h>
 #include <asm/hca.h>
 
-
-
-
-
-
-
-
 /* Per-chip configuration */
 struct chip_config {
 	bool enable;
@@ -44,6 +37,15 @@ struct chip_config {
 		struct dentry *root;
 	} engine[HCA_ENGINES_PER_CHIP];
 };
+
+struct hca_entry {
+	u16 count;
+	u8 age:3;
+	bool gen:1;
+	u16 prev_count:12;
+	u8 socket_ids[4];
+} __packed;
+
 
 static struct chip_config cconfig;
 static DEFINE_MUTEX(hca_mutex);
@@ -521,26 +523,12 @@ static void hca_chip_config_debugfs_init(void)
 			   &cconfig.sampling_lower_thresh);
 }
 
-
-static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_locked,
-					  struct mem_cgroup *memcg,
-					  unsigned long *vm_flags)
-{
-	/* TOOD: Fetch this value from the hca activity region */
-	return 100;
-}
-
-static int hca_scops_folio_test_clear_referenced)(struct folio *folio)
-{
-	return 100;
-}
-
-long hca_score(struct hca_entry *e)
+__maybe_unused long hca_score(struct hca_entry *e) 
 {
 	return e->prev_count + e->count / (e->age + 1);
 }
 
-static int hca_compare(const void *x, const void *y)
+__maybe_unused static int hca_compare(const void *x, const void *y) 
 {
 	long xscore = hca_score((struct hca_entry *) x);
 	long yscore = hca_score((struct hca_entry *) y);
@@ -555,17 +543,36 @@ static int hca_compare(const void *x, const void *y)
 }
 
 
-static const struct scan_control_ops hca_scops = {
+static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_locked,
+					  struct mem_cgroup *memcg,
+					  unsigned long *vm_flags)
+{
+	/* TOOD: Fetch this value from the hca activity region */
+	return 100;
+}
+
+static int hca_scops_folio_test_clear_referenced(struct folio *folio)
+{
+	/* TODO: */
+	return 100;
+}
+
+static int hca_scops_folio_hotness(struct folio *folio)
+{
+	/* TODO: */
+	return 128;
+}
+
+static struct vmscan_ops hca_scops = {
 	/* Return number of references for a single folio */
 	.folio_referenced = hca_scops_folio_referenced,
-	.folio_test_clear_referenced = hca_scops_folio_referenced,
+	.folio_test_clear_referenced = hca_scops_folio_test_clear_referenced,
+	.folio_hotness = &hca_scops_folio_hotness,
 };
 
-extern struct scan_control_ops *arch_scan_control_ops(int nid)
+struct vmscan_ops *arch_vmscan_ops(int nid)
 {
-
-  return &hca_scops;
-  
+	return &hca_scops;
 }
 
 static int hca_powernv_init(void)
