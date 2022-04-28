@@ -3397,4 +3397,25 @@ madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
 }
 #endif
 
+struct scan_control_ops {
+	/* TODO: Possibly need a refcount */
+  nodemask_t nodemask;
+
+	/* Return number of references for a single folio */
+	unsigned long (*folio_referenced)(struct folio *folio, int is_locked,
+					  struct mem_cgroup *memcg,
+					  unsigned long *vm_flags);
+
+	int (*folio_test_clear_referenced)(struct folio *folio);
+};
+
+
+#ifdef CONFIG_ARCH_SCAN_CONTROL
+extern struct scan_control_ops *arch_scan_control_ops(int nid);
+#else
+static inline struct scan_control_ops *arch_scan_control_ops(int nid)
+{
+	return NULL;
+}
+#endif /* CONFIG_ARCH_SCAN_CONTROL */
 #endif /* _LINUX_MM_H */
