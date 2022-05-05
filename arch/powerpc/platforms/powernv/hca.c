@@ -563,7 +563,7 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	return 128;
 }
 
-int hca_scops_enable_monitoring)(int nid, bool enabled)
+int hca_scops_enable_monitoring(int nid, bool enabled)
 {
 	/*TODO */
 	return -ENOTSUPP;
