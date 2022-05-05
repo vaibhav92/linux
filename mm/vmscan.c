@@ -1394,6 +1394,7 @@ static enum page_references folio_check_references(struct folio *folio,
 	unsigned long vm_flags;
         struct vmscan_ops *ops=sc->vmscan_ops;
 
+	/* TODO: Do Page table walk to figure out the VMA FLAGS */
 	if (ops && ops->folio_referenced) {
 		referenced_ptes = ops->folio_referenced(folio, 1, sc->target_mem_cgroup,
 							    &vm_flags);
@@ -4607,8 +4608,7 @@ static inline int lru_gen_get_gen(struct struct lruvec *lruvec, struct folio *fo
 		else
 			gen = lru_gen_from_seq(lrugen->min_seq[type]);
 	}
-
-	return gen;
+y	return gen;
 }
 /******************************************************************************
  *                          the eviction
