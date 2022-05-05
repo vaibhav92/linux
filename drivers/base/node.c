@@ -560,11 +560,46 @@ static ssize_t node_read_distance(struct device *dev,
 }
 static DEVICE_ATTR(distance, 0444, node_read_distance, NULL);
 
+
+static ssize_t node_read_vmscan(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	int nid = dev->id;
+	struct vmscan_ops *scops = arch_vmscan_ops(nid);
+	bool enabled = false;
+
+	if (scops && scops->monitoring_enabled)
+		enabled = !!scops->monitoring_enabled();
+
+	return sysfs_emit_at(buf, 0, "%d", enabled);
+}
+
+static ssize_t node_write_vmscan(struct device *dev,
+				 struct device_attribute *attr, const char *buf, size_t size)
+{
+	int nid = dev->id;
+	struct vmscan_ops *scops = arch_vmscan_ops(nid);
+	int rc;
+	bool val;
+
+	rc = kstrtobool(buf, &val);
+	if (rc)
+		return rc;
+
+	if (scops && scops->enable_monitoring)
+		return scops->enable_monitoring(nid, val);
+
+	return -ENOTSUPP;
+}
+
+static DEVICE_ATTR(vmscan, 0400, node_read_vmscan, node_write_vmscan);
+
 static struct attribute *node_dev_attrs[] = {
 	&dev_attr_meminfo.attr,
 	&dev_attr_numastat.attr,
 	&dev_attr_distance.attr,
 	&dev_attr_vmstat.attr,
+	&dev_attr_vmscan.attr,
 	NULL
 };
 

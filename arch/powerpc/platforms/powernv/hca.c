@@ -563,11 +563,26 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	return 128;
 }
 
+int hca_scops_enable_monitoring)(int nid, bool enabled)
+{
+	/*TODO */
+	return -ENOTSUPP;
+}
+
+int hca_scops_monitoring_enabled(int nid)
+{
+	return 0;
+}
+
+
 static struct vmscan_ops hca_scops = {
 	/* Return number of references for a single folio */
 	.folio_referenced = hca_scops_folio_referenced,
 	.folio_test_clear_referenced = hca_scops_folio_test_clear_referenced,
 	.folio_hotness = &hca_scops_folio_hotness,
+	.enable_monitoring =  &hca_scops_enable_monitoring,
+	.monitoring_enabled = &hca_scops_monitoring_enabled,
+
 };
 
 struct vmscan_ops *arch_vmscan_ops(int nid)
