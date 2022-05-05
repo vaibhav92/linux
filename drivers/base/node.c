@@ -569,7 +569,7 @@ static ssize_t node_read_vmscan(struct device *dev,
 	bool enabled = false;
 
 	if (scops && scops->monitoring_enabled)
-		enabled = !!scops->monitoring_enabled();
+		enabled = !!scops->monitoring_enabled(nid);
 
 	return sysfs_emit_at(buf, 0, "%d", enabled);
 }
