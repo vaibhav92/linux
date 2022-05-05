@@ -3401,6 +3401,7 @@ struct vmscan_ops {
 	/* Return number of references for a single folio */
 	int (*enable_monitoring)(int nid, bool enabled);
 	int (*monitoring_enabled)(int nid);
+
 	unsigned long (*folio_referenced)(struct folio *folio, int is_locked,
 					  struct mem_cgroup *memcg,
 					  unsigned long *vm_flags);

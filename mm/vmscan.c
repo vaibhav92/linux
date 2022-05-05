@@ -4570,6 +4570,47 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 }
 
 /******************************************************************************
+ *                          Generation computation
+ ******************************************************************************/
+#define MAX_HOTNESS 127
+#define MIN_HOTNESS -128
+
+static inline int lru_gen_get_gen(struct struct lruvec *lruvec, struct folio *folio)
+{
+
+	int gen;
+	int type = folio_is_file_lru(folio);
+	struct vmscan_ops * ops =arch_vmscan_ops(folio_nid(folio));
+
+
+	if (ops && ops->folio_hotness) {
+		int hotness = ops->folio_hotness(folio);
+		gen = lru_gen_from_seq(MAX_NR_GENS * hotness / (MAX_HOTNESS - MIN_HOTNESS));
+		gen +=lrugen->min_seq;
+	} else {
+	
+		/*
+		 * There are three common cases for this page:
+		 * 1. If it's hot, e.g., freshly faulted in or previously hot and
+		 *    migrated, add it to the youngest generation.
+		 * 2. If it's cold but can't be evicted immediately, i.e., an anon page
+		 *    not in swapcache or a dirty page pending writeback, add it to the
+		 *    second oldest generation.
+		 * 3. Everything else (clean, cold) is added to the oldest generation.
+		 */
+		if (folio_test_active(folio))
+			gen = lru_gen_from_seq(lrugen->max_seq);
+		else if ((type == LRU_GEN_ANON && !folio_test_swapcache(folio)) ||
+			 (folio_test_reclaim(folio) &&
+			  (folio_test_dirty(folio) || folio_test_writeback(folio))))
+			gen = lru_gen_from_seq(lrugen->min_seq[type] + 1);
+		else
+			gen = lru_gen_from_seq(lrugen->min_seq[type]);
+	}
+
+	return gen;
+}
+/******************************************************************************
  *                          the eviction
  ******************************************************************************/
 
