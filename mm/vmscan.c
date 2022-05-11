@@ -1391,9 +1391,7 @@ bool folio_check_refs_invalid_vma(struct vm_area_struct *vma, void *arg)
 {
 	unsigned long *pra = arg;
 
-	if (vma->vm_flags & VM_LOCKED)
-		*pra = vma->vm_flags;
-
+	*pra |= vma->vm_flags;
 	return true;
 }
 
