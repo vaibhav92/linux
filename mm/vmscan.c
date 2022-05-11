@@ -1394,6 +1394,8 @@ static enum page_references folio_check_references(struct folio *folio,
 	unsigned long vm_flags;
         struct vmscan_ops *ops=sc->vmscan_ops;
 
+	
+
 	/* TODO: Do Page table walk to figure out the VMA FLAGS */
 	if (ops && ops->folio_referenced) {
 		referenced_ptes = ops->folio_referenced(folio, 1, sc->target_mem_cgroup,
@@ -4294,7 +4296,7 @@ static long get_nr_evictable(struct lruvec *lruvec, unsigned long max_seq,
 		unsigned long seq;
 
 		for (seq = min_seq[type]; seq <= max_seq; seq++) {
-			long size = 0;
+			long size = 0;2
 
 			gen = lru_gen_from_seq(seq);
 
@@ -5005,7 +5007,7 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 		int delta;
 		int swappiness;
 		long nr_to_scan;
-
+	
 		if (sc->may_swap)
 			swappiness = get_swappiness(lruvec, sc);
 		else if (!cgroup_reclaim(sc) && get_swappiness(lruvec, sc))

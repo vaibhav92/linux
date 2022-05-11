@@ -573,7 +573,7 @@ static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_lock
 	/* Minor sanity check */
 	BUG_ON(pfn_start > pfn);
 	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
 
 	/* Unpack and return the access count */
 	packed_count = entry->count;
@@ -600,7 +600,7 @@ static int hca_scops_folio_test_clear_referenced(struct folio *folio)
 	/* Minor sanity check */
 	BUG_ON(pfn_start > pfn);
 	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
 
 	/* Unpack and return the access count */
 	packed_count = entry->count;
@@ -629,7 +629,7 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	/* Minor sanity check */
 	BUG_ON(pfn_start > pfn);
 	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
 
 	return hca_score(entry);
 }

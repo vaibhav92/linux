@@ -217,7 +217,7 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 	VM_WARN_ON_ONCE(lru_gen_is_active(lruvec, old_gen) && !lru_gen_is_active(lruvec, new_gen));
 }
 
-extern int lru_gen_get_gen(struct struct lruvec *lruvec, struct folio *folio);
+extern int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio);
 
 static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
