@@ -4578,7 +4578,7 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 #define MAX_HOTNESS 127
 #define MIN_HOTNESS -128
 
-static inline int lru_gen_get_gen(struct struct lruvec *lruvec, struct folio *folio)
+static inline int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
 {
 
 	int gen;
@@ -4610,7 +4610,7 @@ static inline int lru_gen_get_gen(struct struct lruvec *lruvec, struct folio *fo
 		else
 			gen = lru_gen_from_seq(lrugen->min_seq[type]);
 	}
-y	return gen;
+	return gen;
 }
 /******************************************************************************
  *                          the eviction
