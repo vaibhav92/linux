@@ -4590,7 +4590,7 @@ int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
 	if (ops && ops->folio_hotness) {
 		int hotness = ops->folio_hotness(folio);
 		gen = lru_gen_from_seq(MAX_NR_GENS * hotness / (MAX_HOTNESS - MIN_HOTNESS));
-		gen +=lrugen->min_seq;
+		gen +=lrugen->min_seq[0];
 	} else {
 	
 		/*

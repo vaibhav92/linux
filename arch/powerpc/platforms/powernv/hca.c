@@ -616,7 +616,6 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	unsigned long pfn, pfn_start;
 	off_t entry_off;
 	struct hca_entry *entry;
-	u16 packed_count;
 
 	/* if the hca engine is not enabled */
 	if (!cconfig.enable)
@@ -636,6 +635,7 @@ static int hca_scops_folio_hotness(struct folio *folio)
 
 int hca_scops_enable_monitoring(int nid, bool enabled)
 {
+	int rc;
 	/* TODO: Check for specific nid -> chip -> enging */
 	mutex_lock(&hca_mutex);
 
