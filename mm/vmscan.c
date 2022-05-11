@@ -1387,23 +1387,41 @@ enum page_references {
 	PAGEREF_ACTIVATE,
 };
 
+bool folio_check_refs_invalid_vma(struct vm_area_struct *vma, void *arg)
+{
+	unsigned long *pra = arg;
+
+	if (vma->vm_flags & VM_LOCKED)
+		*pra = vma->vm_flags;
+
+	return true;
+}
+
 static enum page_references folio_check_references(struct folio *folio,
 						  struct scan_control *sc)
 {
 	int referenced_ptes, referenced_folio;
-	unsigned long vm_flags;
-        struct vmscan_ops *ops=sc->vmscan_ops;
-
-	
+	unsigned long vm_flags = 0;
+        struct vmscan_ops *ops = sc->vmscan_ops;
 
 	/* TODO: Do Page table walk to figure out the VMA FLAGS */
 	if (ops && ops->folio_referenced) {
-		referenced_ptes = ops->folio_referenced(folio, 1, sc->target_mem_cgroup,
-							    &vm_flags);
+		struct rmap_walk_control rwc = {
+			.invalid_vma = folio_check_refs_invalid_vma,
+			.arg = (void *)&vm_flags,
+		};
+
+		/* do a rmap walk and get the vmflags */
+		rmap_walk(folio, &rwc);
+		referenced_ptes = ops->folio_referenced(folio, 1,
+							sc->target_mem_cgroup,
+							NULL);
 		referenced_folio = ops->folio_test_clear_referenced(folio);
 	} else {
-		referenced_ptes = folio_referenced(folio, 1, sc->target_mem_cgroup,
-					   &vm_flags);
+		/* Take the usual path */
+		referenced_ptes = folio_referenced(folio, 1,
+						   sc->target_mem_cgroup,
+						   &vm_flags);
 		referenced_folio = folio_test_clear_referenced(folio);
 	}
 
