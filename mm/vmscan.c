@@ -4296,7 +4296,7 @@ static long get_nr_evictable(struct lruvec *lruvec, unsigned long max_seq,
 		unsigned long seq;
 
 		for (seq = min_seq[type]; seq <= max_seq; seq++) {
-			long size = 0;2
+			long size = 0;
 
 			gen = lru_gen_from_seq(seq);
 
@@ -4578,11 +4578,12 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 #define MAX_HOTNESS 127
 #define MIN_HOTNESS -128
 
-static inline int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
+int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
 {
 
 	int gen;
 	int type = folio_is_file_lru(folio);
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
 	struct vmscan_ops * ops =arch_vmscan_ops(folio_nid(folio));
 
 
