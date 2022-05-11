@@ -523,7 +523,7 @@ static void hca_chip_config_debugfs_init(void)
 			   &cconfig.sampling_lower_thresh);
 }
 
-__maybe_unused long hca_score(struct hca_entry *e) 
+long hca_score(struct hca_entry *e) 
 {
 	return e->prev_count + e->count / (e->age + 1);
 }
@@ -543,35 +543,120 @@ __maybe_unused static int hca_compare(const void *x, const void *y)
 }
 
 
+unsigned long long unpack_access_count(u16 packed_count)
+{
+	unsigned int exponent = (packed_count & 0xF);
+	unsigned int mantissa = ((packed_count >> 4) & 0xFFF);
+
+	return (1UL << 2 * exponent) * mantissa;
+}
+
+
 static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_locked,
 					  struct mem_cgroup *memcg,
 					  unsigned long *vm_flags)
 {
 	/* TOOD: Fetch this value from the hca activity region */
-	return 100;
+	unsigned long pfn, pfn_start;
+	off_t entry_off;
+	struct hca_entry *entry;
+	u16 packed_count;
+
+	/* if the hca engine is not enabled */
+	if (!cconfig.enable)
+		return 0;
+
+	/* Calculate the PFN relative to start of the monitor area */
+	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
+	pfn = folio_pfn(folio);
+
+	/* Minor sanity check */
+	BUG_ON(pfn_start > pfn);
+	entry_off = (pfn - pfn_start);
+	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+
+	/* Unpack and return the access count */
+	packed_count = entry->count;
+
+	return unpack_access_count(packed_count);
 }
 
 static int hca_scops_folio_test_clear_referenced(struct folio *folio)
 {
-	/* TODO: */
-	return 100;
+	/* TOOD: Fetch this value from the hca activity region */
+	unsigned long pfn, pfn_start;
+	off_t entry_off;
+	struct hca_entry *entry;
+	u16 packed_count;
+
+	/* if the hca engine is not enabled */
+	if (!cconfig.enable)
+		return 0;
+
+	/* Calculate the PFN relative to start of the monitor area */
+	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
+	pfn = folio_pfn(folio);
+
+	/* Minor sanity check */
+	BUG_ON(pfn_start > pfn);
+	entry_off = (pfn - pfn_start);
+	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+
+	/* Unpack and return the access count */
+	packed_count = entry->count;
+
+	entry->count = 0;
+
+	return packed_count != 0;
 }
 
 static int hca_scops_folio_hotness(struct folio *folio)
 {
-	/* TODO: */
-	return 128;
+	/* TOOD: Fetch this value from the hca activity region */
+	unsigned long pfn, pfn_start;
+	off_t entry_off;
+	struct hca_entry *entry;
+	u16 packed_count;
+
+	/* if the hca engine is not enabled */
+	if (!cconfig.enable)
+		return 0;
+
+	/* Calculate the PFN relative to start of the monitor area */
+	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
+	pfn = folio_pfn(folio);
+
+	/* Minor sanity check */
+	BUG_ON(pfn_start > pfn);
+	entry_off = (pfn - pfn_start);
+	entry = &((struct hca_entry *)__va(econfig->counter_base))[entry_off];
+
+	return hca_score(entry);
 }
 
 int hca_scops_enable_monitoring(int nid, bool enabled)
 {
-	/*TODO */
-	return -ENOTSUPP;
+	/* TODO: Check for specific nid -> chip -> enging */
+	mutex_lock(&hca_mutex);
+
+	/* Check if not already enabled or disabled */
+	if (!cconfig.enable && enabled)
+		rc = hca_chip_setup();
+	else if (cconfig.enable && !enabled)
+		rc = hca_chip_reset();
+
+	if (!rc)
+		cconfig.enable = enabled;
+
+	mutex_unlock(&hca_mutex);
+
+	return rc;
 }
 
 int hca_scops_monitoring_enabled(int nid)
 {
-	return 0;
+	/* TODO: Check for specific nid -> chip -> enging */
+	return READ_ONCE(cconfig.enable);
 }
 
 
@@ -621,15 +706,4 @@ static int hca_powernv_init(void)
 	return 0;
 }
 
-
-static int hca_pseries_init(void)
-{
-	pr_info("hot-cold affinity init\n");
-	memset(&cconfig, 0, sizeof(cconfig));
-	hca_chip_config_debugfs_init();
-
-	return 0;
-}
-
 machine_device_initcall(powernv, hca_powernv_init);
-machine_device_initcall(pseries, hca_pseries_init);
