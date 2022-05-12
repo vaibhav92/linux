@@ -1414,7 +1414,7 @@ static enum page_references folio_check_references(struct folio *folio,
 		referenced_ptes = ops->folio_referenced(folio, 1,
 							sc->target_mem_cgroup,
 							NULL);
-		referenced_folio = ops->folio_test_clear_referenced(folio);
+		referenced_folio = ops->folio_test_clear_referen1ced(folio);
 	} else {
 		/* Take the usual path */
 		referenced_ptes = folio_referenced(folio, 1,
@@ -4603,11 +4603,11 @@ int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
 	struct vmscan_ops * ops =arch_vmscan_ops(folio_nid(folio));
 
 
-	if (ops && ops->folio_hotness) {
-		int hotness = ops->folio_hotness(folio);
-		gen = lru_gen_from_seq(MAX_NR_GENS * hotness / (MAX_HOTNESS - MIN_HOTNESS));
-		gen +=lrugen->min_seq[0];
-	} else {
+/* 	if (ops && ops->folio_hotness) { */
+/* 		int hotness = ops->folio_hotness(folio); */
+/* 		gen = lru_gen_from_seq(MAX_NR_GENS * hotness / (MAX_HOTNESS - MIN_HOTNESS)); */
+/* 		gen +=lrugen->min_seq[0]; */
+/* 	} else */ {
 	
 		/*
 		 * There are three common cases for this page:
