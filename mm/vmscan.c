@@ -1414,7 +1414,7 @@ static enum page_references folio_check_references(struct folio *folio,
 		referenced_ptes = ops->folio_referenced(folio, 1,
 							sc->target_mem_cgroup,
 							NULL);
-		referenced_folio = ops->folio_test_clear_referen1ced(folio);
+		referenced_folio = ops->folio_test_clear_referenced(folio);
 	} else {
 		/* Take the usual path */
 		referenced_ptes = folio_referenced(folio, 1,
