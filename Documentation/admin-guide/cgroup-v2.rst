@@ -1209,17 +1209,26 @@ PAGE_SIZE multiple when read back.
 	utility is limited to providing the final safety net.
 
   memory.reclaim
-	A write-only nested-keyed file which exists for all cgroups.
+	A nested-keyed file which exists for all cgroups.
 
-	This is a simple interface to trigger memory reclaim in the
-	target cgroup.
+	This is a simple interface to trigger memory reclaim and retrive
+	reclaim stats in the target cgroup.
 
 	This file accepts a single key, the number of bytes to reclaim.
 	No nested keys are currently supported.
 
+	Reading the file returns number of pages scanned and number of
+	pages reclaimed from the memcg. This information fetched from
+	vmpressure info associated with each cgroup.
+
 	Example::
 
 	  echo "1G" > memory.reclaim
+
+	  cat memory.reclaim
+
+	  scanned 0
+	  reclaimed 0
 
 	The interface can be later extended with nested keys to
 	configure the reclaim behavior. For example, specify the

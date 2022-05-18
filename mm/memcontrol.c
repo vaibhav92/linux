@@ -6423,6 +6423,19 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 	return nbytes;
 }
 
+static int memory_reclaim_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+	struct vmpressure *vmpr = memcg_to_vmpressure(memcg);
+
+	spin_lock(&vmpr->sr_lock);
+	seq_printf(m, "scanned %lu\nreclaimed %lu\n",
+		   vmpr->scanned, vmpr->reclaimed);
+	spin_unlock(&vmpr->sr_lock);
+
+	return 0;
+}
+
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off)
 {
@@ -6525,6 +6538,7 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+		.seq_show  = memory_reclaim_show,
 	},
 	{ }	/* terminate */
 };
