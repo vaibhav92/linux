@@ -83,7 +83,8 @@ static int hca_counter_base_free(struct hca_unit_entry *uent)
 {
 	unsigned long start_pfn, nr_pages;
 
-	start_pfn = uent->counter_base;
+	uent = &hca_chips[cidx].units[uidx];
+	start_pfn = PHYS_PFN(uent->counter_base);
 	nr_pages = CEIL_DIV(uent->counter_size, PAGE_SIZE);
 	free_contig_range(start_pfn, nr_pages);
 	uent->counter_base = 0;
