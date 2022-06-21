@@ -41,3 +41,4 @@ config ARCH_SCAN_CONTROL
        bool "Enable HCA control"
        default y
        depends on PPC_POWERNV && LRU_GEN
+

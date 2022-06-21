@@ -1389,7 +1389,8 @@ enum page_references {
 
 
 /* Bail out early if a vma is found to be locked */
-bool hca_folio_check_refs_rmap_one(struct folio *folio, struct vm_area_struct *vma, void *arg)
+bool hca_folio_check_refs_rmap_one(struct folio *folio, struct vm_area_struct *vma, unsigned long addr,
+				   void *arg)
 {
 	unsigned long *pra = arg;
 
