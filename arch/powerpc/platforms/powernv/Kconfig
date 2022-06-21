@@ -36,3 +36,8 @@ config PPC_MEMTRACE
 config SCOM_DEBUGFS
 	bool "Expose SCOM controllers via debugfs"
 	depends on DEBUG_FS
+
+config ARCH_SCAN_CONTROL
+       bool "Enable HCA control"
+       default y
+       depends on PPC_POWERNV && LRU_GEN

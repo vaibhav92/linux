@@ -1387,12 +1387,84 @@ enum page_references {
 	PAGEREF_ACTIVATE,
 };
 
-bool folio_check_refs_invalid_vma(struct vm_area_struct *vma, void *arg)
+
+/* Bail out early if a vma is found to be locked */
+bool hca_folio_check_refs_rmap_one(struct folio *folio, struct vm_area_struct *vma, void *arg)
 {
 	unsigned long *pra = arg;
 
-	*pra |= vma->vm_flags;
-	return true;
+	if (vma->vm_flags & VM_LOCKED) {
+		*pra = VM_LOCKED;
+		return false;
+	} else {
+		return true;
+	}
+}
+
+static enum page_references hca_folio_check_references(struct folio *folio,
+						  struct scan_control *sc)
+{
+	int referenced_ptes, referenced_folio;
+	unsigned long vm_flags = 0;
+	struct vmscan_ops *ops = sc->vmscan_ops;
+	struct rmap_walk_control rwc = {
+		.rmap_one = hca_folio_check_refs_rmap_one,
+		.arg = (void *)&vm_flags,
+	};
+
+	/* TODO: Do Page table walk to figure out the VMA FLAGS */
+	if (unlikely(!ops->folio_referenced))
+		return PAGEREF_RECLAIM;
+
+	/* do a rmap walk and get the vmflags */
+	rmap_walk(folio, &rwc);
+
+	/*
+	 * The supposedly reclaimable folio was found to be in a VM_LOCKED vma.
+	 * Let the folio, now marked Mlocked, be moved to the unevictable list.
+	 */
+	if (vm_flags & VM_LOCKED)
+		return PAGEREF_ACTIVATE;
+
+	referenced_ptes = ops->folio_referenced(folio, 1,
+						sc->target_mem_cgroup,
+						NULL);
+	referenced_folio = ops->folio_test_clear_referenced(folio);
+
+	if (referenced_ptes) {
+		/*
+		 * All mapped folios start out with page table
+		 * references from the instantiating fault, so we need
+		 * to look twice if a mapped file/anon folio is used more
+		 * than once.
+		 *
+		 * Mark it and spare it for another trip around the
+		 * inactive list.  Another page table reference will
+		 * lead to its activation.
+		 *
+		 * Note: the mark is set for activated folios as well
+		 * so that recently deactivated but used folios are
+		 * quickly recovered.
+		 */
+		folio_set_referenced(folio);
+
+		if (referenced_folio || referenced_ptes > 1)
+			return PAGEREF_ACTIVATE;
+
+		/*
+		 * Activate file-backed executable folios after first usage.
+		 */
+		if ((vm_flags & VM_EXEC) && !folio_test_swapbacked(folio))
+			return PAGEREF_ACTIVATE;
+
+		return PAGEREF_KEEP;
+	}
+
+	/* Reclaim if clean, defer dirty folios to writeback */
+	if (referenced_folio && !folio_test_swapbacked(folio))
+		return PAGEREF_RECLAIM_CLEAN;
+
+	return PAGEREF_RECLAIM;
 }
 
 static enum page_references folio_check_references(struct folio *folio,
@@ -1400,28 +1472,11 @@ static enum page_references folio_check_references(struct folio *folio,
 {
 	int referenced_ptes, referenced_folio;
 	unsigned long vm_flags = 0;
-        struct vmscan_ops *ops = sc->vmscan_ops;
 
-	/* TODO: Do Page table walk to figure out the VMA FLAGS */
-	if (ops && ops->folio_referenced) {
-		struct rmap_walk_control rwc = {
-			.invalid_vma = folio_check_refs_invalid_vma,
-			.arg = (void *)&vm_flags,
-		};
-
-		/* do a rmap walk and get the vmflags */
-		rmap_walk(folio, &rwc);
-		referenced_ptes = ops->folio_referenced(folio, 1,
-							sc->target_mem_cgroup,
-							NULL);
-		referenced_folio = ops->folio_test_clear_referenced(folio);
-	} else {
-		/* Take the usual path */
-		referenced_ptes = folio_referenced(folio, 1,
-						   sc->target_mem_cgroup,
-						   &vm_flags);
-		referenced_folio = folio_test_clear_referenced(folio);
-	}
+	referenced_ptes = folio_referenced(folio, 1,
+					   sc->target_mem_cgroup,
+					   &vm_flags);
+	referenced_folio = folio_test_clear_referenced(folio);
 
 	/*
 	 * The supposedly reclaimable folio was found to be in a VM_LOCKED vma.
@@ -1702,8 +1757,14 @@ retry:
 			}
 		}
 
-		if (!ignore_references)
-			references = folio_check_references(folio, sc);
+		if (!ignore_references) {
+			struct vmscan_ops *ops = sc->vmscan_ops;
+
+			if (unlikely(ops)) // && ops->folio_check_references))
+				references = hca_folio_check_references(folio, sc);//sc->folio_check_references(folio, sc);
+			else
+				references = folio_check_references(folio, sc);
+		}
 
 		switch (references) {
 		case PAGEREF_ACTIVATE:
@@ -1715,7 +1776,6 @@ retry:
 		case PAGEREF_RECLAIM_CLEAN:
 			; /* try to reclaim the page below */
 		}
-		
 		/*
 		 * Before reclaiming the page, try to relocate
 		 * its contents to another node.
@@ -2574,7 +2634,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 unsigned long reclaim_pages(struct list_head *page_list)
 {
-	int nid = NUMA_NO_NODE;
+	int nid = NUMA_NO_NODE, last_nid =  NUMA_NO_NODE;
 	unsigned int nr_reclaimed = 0;
 	LIST_HEAD(node_page_list);
 	struct reclaim_stat dummy_stat;
@@ -2604,7 +2664,11 @@ unsigned long reclaim_pages(struct list_head *page_list)
 		}
 
 		/* Fetch the scanops from arch code and pass it on skrink_page_list() */
-		sc.vmscan_ops = arch_vmscan_ops(page_to_nid(page));
+		if (last_nid != nid) {
+			sc.vmscan_ops = arch_vmscan_ops(nid);
+			last_nid = nid;
+		}
+
 		nr_reclaimed += shrink_page_list(&node_page_list,
 						NODE_DATA(nid),
 						&sc, &dummy_stat, false);

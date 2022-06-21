@@ -672,7 +672,6 @@ static struct vmscan_ops hca_scops = {
 
 struct vmscan_ops *arch_vmscan_ops(int nid)
 {
-
 	if (cconfig.enable)
 		return &hca_scops;
 	else

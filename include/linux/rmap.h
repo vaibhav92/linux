@@ -287,7 +287,7 @@ struct rmap_walk_control {
 	 */
 	bool (*rmap_one)(struct folio *folio, struct vm_area_struct *vma,
 					unsigned long addr, void *arg);
-	int (*done)(struct folio *folio);
+	int (*done)(struct folio *folio, void *arg);
 	struct anon_vma *(*anon_lock)(struct folio *folio);
 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
 };
