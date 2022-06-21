@@ -4665,7 +4665,7 @@ int lru_gen_get_gen(struct lruvec *lruvec, struct folio *folio)
 	int gen;
 	int type = folio_is_file_lru(folio);
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
-	struct vmscan_ops * ops =arch_vmscan_ops(folio_nid(folio));
+/*	struct vmscan_ops * ops =arch_vmscan_ops(folio_nid(folio)); */
 
 
 /* 	if (ops && ops->folio_hotness) { */
