@@ -232,7 +232,24 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	if (folio_test_unevictable(folio) || !lrugen->enabled)
 		return false;
 
-	gen = lru_gen_get_gen(lruvec, folio);
+	//gen = lru_gen_get_gen(lruvec, folio);
+	/*
+	 * There are three common cases for this page:
+	 * 1. If it's hot, e.g., freshly faulted in or previously hot and
+	 *    migrated, add it to the youngest generation.
+	 * 2. If it's cold but can't be evicted immediately, i.e., an anon page
+	 *    not in swapcache or a dirty page pending writeback, add it to the
+	 *    second oldest generation.
+	 * 3. Everything else (clean, cold) is added to the oldest generation.
+	 */
+	if (folio_test_active(folio))
+		gen = lru_gen_from_seq(lrugen->max_seq);
+	else if ((type == LRU_GEN_ANON && !folio_test_swapcache(folio)) ||
+		 (folio_test_reclaim(folio) &&
+		  (folio_test_dirty(folio) || folio_test_writeback(folio))))
+		gen = lru_gen_from_seq(lrugen->min_seq[type] + 1);
+	else
+		gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
 	/* see the comment on MIN_NR_GENS */
 	mask = LRU_GEN_MASK | BIT(PG_active);
