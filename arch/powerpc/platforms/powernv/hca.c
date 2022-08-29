@@ -52,8 +52,7 @@ struct hca_engine_stats {
 	struct engine_config * engine;
 	u64 max_refs;
 	u64 min_refs;
-}
-
+};
 
 static struct chip_config cconfig;
 static DEFINE_MUTEX(hca_mutex);
