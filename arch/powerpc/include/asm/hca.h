@@ -32,7 +32,7 @@
  * the HCA cache are written back to memory once the count reaches @m.
  */
 #define HCA_OVERFLOW_MASK(m)		min((u64)4096, max((u64)16, (u64)roundup_pow_of_two(m)))
-#define HCA_OVERFLOW_MASK_DEFAULT	16
+#define HCA_OVERFLOW_MASK_DEFAULT	4096
 
 /*
  * @m: The command sampling mode

@@ -10,10 +10,12 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/debugfs.h>
+#include <linux/kstrtox.h>
 #include <asm/machdep.h>
 #include <asm/cacheflush.h>
 #include <asm/opal.h>
 #include <asm/hca.h>
+
 
 /* Per-chip configuration */
 struct chip_config {
@@ -45,6 +47,12 @@ struct hca_entry {
 	u16 prev_count:12;
 	u8 socket_ids[4];
 } __packed;
+
+struct hca_engine_stats {
+	struct engine_config * engine;
+	u64 max_refs;
+	u64 min_refs;
+}
 
 
 static struct chip_config cconfig;
@@ -682,6 +690,14 @@ struct vmscan_ops *arch_vmscan_ops(int nid)
 		return NULL;
 }
 
+static bool hca_enabled = false;
+
+static int parse_hca_param(char *arg)
+{
+        return strtobool(arg, &hca_enabled);
+}
+early_param("hca", parse_hca_param);
+
 static int hca_powernv_init(void)
 {
 	int rc;
@@ -706,11 +722,23 @@ static int hca_powernv_init(void)
 	memset(&cconfig, 0, sizeof(cconfig));
 	rc = hca_chip_reset();
 	if (rc)
-		return rc;
+		goto out;
 
 	hca_chip_config_debugfs_init();
 
-	return 0;
+	/* Pre init HCA if requested */
+	if (hca_enabled) {
+		struct engine_config *econfig = &cconfig.engine[0];
+		rc = hca_chip_setup();
+		if (!rc) {
+			cconfig.enable = true;
+			hca_engine_setup(0);
+		}
+		if (!rc)
+			econfig->enable = true;
+	}
+out:
+	return rc;
 }
 
 machine_device_initcall(powernv, hca_powernv_init);
