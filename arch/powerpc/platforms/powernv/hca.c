@@ -728,12 +728,19 @@ static int hca_powernv_init(void)
 
 	/* Pre init HCA if requested */
 	if (hca_enabled) {
+		struct pglist_data * node=first_online_pgdat();
 		struct engine_config *econfig = &cconfig.engine[0];
+
 		rc = hca_chip_setup();
-		if (!rc) {
-			cconfig.enable = true;
-			hca_engine_setup(0);
+		if (rc) {
+			goto out;
 		}
+		/* TODO: Get the first online node right now and setup the monitor for that region */
+		econfig->monitor_base = PFN_PHYS(node->node_start_pfn);
+		econfig->monitor_size = PFN_PHYS(node->node_spanned_pages);
+		cconfig.enable = true;
+		hca_engine_setup(0);
+		
 		if (!rc)
 			econfig->enable = true;
 	}
