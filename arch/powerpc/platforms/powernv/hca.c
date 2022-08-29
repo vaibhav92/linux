@@ -543,10 +543,10 @@ __maybe_unused static int hca_compare(const void *x, const void *y)
 }
 
 
-unsigned long long unpack_access_count(u16 packed_count)
+static unsigned long long unpack_access_count(u16 packed_count)
 {
-	unsigned int exponent = (packed_count & 0xF);
-	unsigned int mantissa = ((packed_count >> 4) & 0xFFF);
+	const unsigned int exponent = (packed_count & 0xF);
+	const unsigned int mantissa = ((packed_count >> 4) & 0xFFF);
 
 	return (1UL << 2 * exponent) * mantissa;
 }
@@ -561,6 +561,9 @@ static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_lock
 	off_t entry_off;
 	struct hca_entry *entry;
 	u16 packed_count;
+
+	/* if the hca engine is not enabled */
+	WARN_ON_ONCE(!cconfig.enable);
 
 	/* if the hca engine is not enabled */
 	if (!cconfig.enable)
@@ -590,8 +593,9 @@ static int hca_scops_folio_test_clear_referenced(struct folio *folio)
 	u16 packed_count;
 
 	/* if the hca engine is not enabled */
+	WARN_ON_ONCE(!cconfig.enable);
 	if (!cconfig.enable)
-		return 0;
+		return 1;
 
 	/* Calculate the PFN relative to start of the monitor area */
 	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
