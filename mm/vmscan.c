@@ -1405,17 +1405,13 @@ bool hca_folio_check_refs_rmap_one(struct folio *folio, struct vm_area_struct *v
 static enum page_references hca_folio_check_references(struct folio *folio,
 						  struct scan_control *sc)
 {
-	int referenced_ptes, referenced_folio;
+	int referenced_ptes, referenced_folio, hotness;
 	unsigned long vm_flags = 0;
 	struct vmscan_ops *ops = sc->vmscan_ops;
 	struct rmap_walk_control rwc = {
 		.rmap_one = hca_folio_check_refs_rmap_one,
 		.arg = (void *)&vm_flags,
 	};
-
-	/* TODO: Do Page table walk to figure out the VMA FLAGS */
-	if (unlikely(!ops->folio_referenced))
-		return PAGEREF_RECLAIM;
 
 	/* do a rmap walk and get the vmflags */
 	rmap_walk(folio, &rwc);
@@ -1427,29 +1423,17 @@ static enum page_references hca_folio_check_references(struct folio *folio,
 	if (vm_flags & VM_LOCKED)
 		return PAGEREF_ACTIVATE;
 
+	
 	referenced_ptes = ops->folio_referenced(folio, 1,
 						sc->target_mem_cgroup,
 						NULL);
 	referenced_folio = ops->folio_test_clear_referenced(folio);
+	/* folio_clear_referenced(folio); */
+	
+	hotness = ops->folio_hotness(folio);
 
 	if (referenced_ptes) {
-		/*
-		 * All mapped folios start out with page table
-		 * references from the instantiating fault, so we need
-		 * to look twice if a mapped file/anon folio is used more
-		 * than once.
-		 *
-		 * Mark it and spare it for another trip around the
-		 * inactive list.  Another page table reference will
-		 * lead to its activation.
-		 *
-		 * Note: the mark is set for activated folios as well
-		 * so that recently deactivated but used folios are
-		 * quickly recovered.
-		 */
-		folio_set_referenced(folio);
-
-		if (referenced_folio || referenced_ptes > 1)
+		if (hotness > 1)
 			return PAGEREF_ACTIVATE;
 
 		/*
@@ -1458,7 +1442,7 @@ static enum page_references hca_folio_check_references(struct folio *folio,
 		if ((vm_flags & VM_EXEC) && !folio_test_swapbacked(folio))
 			return PAGEREF_ACTIVATE;
 
-		return PAGEREF_KEEP;
+		return PAGEREF_RECLAIM;
 	}
 
 	/* Reclaim if clean, defer dirty folios to writeback */
@@ -1761,8 +1745,8 @@ retry:
 		if (!ignore_references) {
 			struct vmscan_ops *ops = sc->vmscan_ops;
 
-			if (unlikely(ops)) // && ops->folio_check_references))
-				references = hca_folio_check_references(folio, sc);//sc->folio_check_references(folio, sc);
+			if (ops)
+				references = hca_folio_check_references(folio, sc);
 			else
 				references = folio_check_references(folio, sc);
 		}
@@ -2647,6 +2631,7 @@ unsigned long reclaim_pages(struct list_head *page_list)
 		.may_unmap = 1,
 		.may_swap = 1,
 		.no_demotion = 1,
+		.vmscan_ops = arch_vmscan_ops(first_online_pgdat()),
 	};
 
 	noreclaim_flag = memalloc_noreclaim_save();
@@ -6553,6 +6538,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_writepage = !laptop_mode,
 		.may_unmap = 1,
 		.may_swap = 1,
+		.vmscan_ops = arch_vmscan_ops(first_online_pgdat()),
 	};
 
 	/*
@@ -6642,6 +6628,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 		.may_writepage = !laptop_mode,
 		.may_unmap = 1,
 		.may_swap = may_swap,
+		.vmscan_ops = arch_vmscan_ops(first_online_pgdat()),
 	};
 	/*
 	 * Traverse the ZONELIST_FALLBACK zonelist of the current node to put
@@ -7363,6 +7350,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 		.may_unmap = 1,
 		.may_swap = 1,
 		.hibernation_mode = 1,
+		.vmscan_ops = arch_vmscan_ops(first_online_pgdat()),
 	};
 	struct zonelist *zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
 	unsigned long nr_reclaimed;
@@ -7516,6 +7504,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 		.may_unmap = !!(node_reclaim_mode & RECLAIM_UNMAP),
 		.may_swap = 1,
 		.reclaim_idx = gfp_zone(gfp_mask),
+		.vmscan_ops = arch_vmscan_ops(first_online_pgdat()),
 	};
 	unsigned long pflags;
 

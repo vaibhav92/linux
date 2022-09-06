@@ -3398,14 +3398,11 @@ madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
 #endif
 
 struct vmscan_ops {
-	/* Return number of references for a single folio */
-	int (*enable_monitoring)(int nid, bool enabled);
-	int (*monitoring_enabled)(int nid);
-
+	/* Determine how many times a page was referened since last time */
 	unsigned long (*folio_referenced)(struct folio *folio, int is_locked,
 					  struct mem_cgroup *memcg,
 					  unsigned long *vm_flags);
-
+	/* test and clear the referece count for specific folio entry */
 	int (*folio_test_clear_referenced)(struct folio *folio);
 
 	int (*folio_hotness)(struct folio *folio);

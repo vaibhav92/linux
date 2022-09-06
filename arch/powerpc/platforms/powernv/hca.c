@@ -11,11 +11,26 @@
 #include <linux/fs.h>
 #include <linux/debugfs.h>
 #include <linux/kstrtox.h>
+#include <linux/prandom.h>
+#include <linux/workqueue.h>
+#include <linux/pfn.h>
+
 #include <asm/machdep.h>
 #include <asm/cacheflush.h>
 #include <asm/opal.h>
 #include <asm/hca.h>
 
+
+/* Hold stats for a specific hca engine */
+struct hca_engine_stats {
+	ulong max_hotness;
+	ulong min_hotness;
+
+        unsigned long  max_hotness_pfn;
+	unsigned long min_hotness_pfn;
+
+	struct delayed_work scan_work;
+};
 
 /* Per-chip configuration */
 struct chip_config {
@@ -37,6 +52,7 @@ struct chip_config {
 		u64 counter_size;
 		u64 decay_delay;
 		struct dentry *root;
+		struct hca_engine_stats stats;
 	} engine[HCA_ENGINES_PER_CHIP];
 };
 
@@ -48,11 +64,6 @@ struct hca_entry {
 	u8 socket_ids[4];
 } __packed;
 
-struct hca_engine_stats {
-	struct engine_config * engine;
-	u64 max_refs;
-	u64 min_refs;
-};
 
 static struct chip_config cconfig;
 static DEFINE_MUTEX(hca_mutex);
@@ -131,6 +142,14 @@ static int hca_engine_setup(unsigned int engine)
 	return 0;
 }
 
+
+static void hca_scan_activity_area(struct work_struct *work)
+{
+
+	/* TODO for future */
+}
+
+
 static int hca_engine_reset(unsigned int engine)
 {
 	struct engine_config *econfig;
@@ -162,6 +181,12 @@ static int hca_engine_reset(unsigned int engine)
 	econfig->counter_size = HCA_COUNTER_SIZE_DEFAULT;
 	econfig->decay_delay = HCA_DECAY_DELAY_DEFAULT;
 
+	econfig->stats.max_hotness = 0;
+	econfig->stats.min_hotness = 0;
+	econfig->stats.max_hotness_pfn = 0;
+	econfig->stats.min_hotness_pfn = 0;
+
+	INIT_DEFERRABLE_WORK(&econfig->stats.scan_work, hca_scan_activity_area);
 	return 0;
 }
 
@@ -497,6 +522,43 @@ static void hca_engine_config_debugfs_init(unsigned int engine)
 				   &hca_engine_counter_data_fops);
 	debugfs_create_u64("decay-delay", 0600, econfig->root,
 			   &econfig->decay_delay);
+
+	/* Expose Engine Stats */
+	debugfs_create_ulong("max-hotness", 0400, econfig->root,
+			   &econfig->stats.max_hotness);
+	debugfs_create_ulong("max-hotness-pfn", 0400, econfig->root,
+			   &econfig->stats.max_hotness_pfn);
+
+	debugfs_create_ulong("min-hotness", 0400, econfig->root,
+			     &econfig->stats.min_hotness);
+	debugfs_create_ulong("min-hotness-pfn", 0400, econfig->root,
+			   &econfig->stats.min_hotness_pfn);
+}
+
+static struct hca_entry * folio_hca_entry(struct folio *folio)
+{
+	/* TOOD: Fetch this value from the hca activity region */
+	unsigned long pfn, pfn_start;
+	struct engine_config *econfig = &cconfig.engine[0];
+	off_t entry_off;
+
+	/* if the hca engine is not enabled */
+	if (!cconfig.enable)
+		return NULL;
+
+	/* Calculate the PFN relative to start of the monitor area */
+	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
+	pfn = folio_pfn(folio);
+
+	/* Minor sanity check */
+	BUG_ON(pfn_start > pfn);
+	entry_off = (pfn - pfn_start);
+
+	/* Check out of bounds */
+	if (entry_off * sizeof (struct hca_entry) > econfig->monitor_size)
+		return NULL;
+
+	return &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
 }
 
 static void hca_engine_config_debugfs_free(unsigned int engine)
@@ -530,27 +592,7 @@ static void hca_chip_config_debugfs_init(void)
 			   &cconfig.sampling_lower_thresh);
 }
 
-long hca_score(struct hca_entry *e) 
-{
-	return e->prev_count + e->count / (e->age + 1);
-}
-
-__maybe_unused static int hca_compare(const void *x, const void *y) 
-{
-	long xscore = hca_score((struct hca_entry *) x);
-	long yscore = hca_score((struct hca_entry *) y);
-
-	/* sort by decreasing order of hotness score */
-	if (xscore < yscore)
-		return 1;
-	else if (xscore > yscore)
-		return -1;
-
-	return 0;
-}
-
-
-static unsigned long long unpack_access_count(u16 packed_count)
+static inline unsigned long long unpack_access_count(u16 packed_count)
 {
 	const unsigned int exponent = (packed_count & 0xF);
 	const unsigned int mantissa = ((packed_count >> 4) & 0xFFF);
@@ -563,122 +605,107 @@ static unsigned long hca_scops_folio_referenced(struct folio *folio, int is_lock
 					  struct mem_cgroup *memcg,
 					  unsigned long *vm_flags)
 {
-	/* TOOD: Fetch this value from the hca activity region */
-	unsigned long pfn, pfn_start;
-	off_t entry_off;
-	struct hca_entry *entry;
+	struct hca_entry * entry = folio_hca_entry(folio);
 	u16 packed_count;
 
-	/* if the hca engine is not enabled */
-	WARN_ON_ONCE(!cconfig.enable);
-
-	/* if the hca engine is not enabled */
-	if (!cconfig.enable)
+	if (!entry) {
+		WARN_ON(1);
 		return 0;
-
-	/* Calculate the PFN relative to start of the monitor area */
-	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
-	pfn = folio_pfn(folio);
-
-	/* Minor sanity check */
-	BUG_ON(pfn_start > pfn);
-	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
+	}
 
 	/* Unpack and return the access count */
 	packed_count = entry->count;
-
 	return unpack_access_count(packed_count);
 }
 
 static int hca_scops_folio_test_clear_referenced(struct folio *folio)
 {
-	/* TOOD: Fetch this value from the hca activity region */
-	unsigned long pfn, pfn_start;
-	off_t entry_off;
-	struct hca_entry *entry;
+
+	struct hca_entry * entry = folio_hca_entry(folio);
 	u16 packed_count;
 
-	/* if the hca engine is not enabled */
-	WARN_ON_ONCE(!cconfig.enable);
-	if (!cconfig.enable)
-		return 1;
+	if (!entry) {
+		WARN_ON(1);
+		return 0;
+	}
 
-	/* Calculate the PFN relative to start of the monitor area */
-	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
-	pfn = folio_pfn(folio);
-
-	/* Minor sanity check */
-	BUG_ON(pfn_start > pfn);
-	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
-
-	/* Unpack and return the access count */
 	packed_count = entry->count;
-
 	entry->count = 0;
 
 	return packed_count != 0;
 }
 
+/* Update max/min hotness of an engine */
+static void update_engine_stats(struct engine_config *engine, struct folio *folio,
+				ulong hotness)
+{
+	struct hca_engine_stats *stats = &engine->stats;
+	int current_hotness;
+	bool success;
+
+	current_hotness = READ_ONCE(stats->max_hotness);
+
+	/* TODO: handle possible race */
+	/* Update the stats */
+	if (hotness > current_hotness) {
+		success = (cmpxchg64(&stats->max_hotness,
+				     current_hotness, hotness) == current_hotness);
+		if (success) {
+			WRITE_ONCE(stats->max_hotness, hotness);
+			WRITE_ONCE(stats->max_hotness_pfn, folio_pfn(folio));
+		}
+	}
+
+	current_hotness = READ_ONCE(stats->min_hotness);
+
+	/* TODO: handle possible race */
+	/* Update the stats */
+	if (hotness < current_hotness) {
+		success = (cmpxchg64(&stats->min_hotness,
+				     current_hotness, hotness) == current_hotness);
+		if (success) {
+			WRITE_ONCE(stats->min_hotness, hotness);
+			WRITE_ONCE(stats->min_hotness_pfn, folio_pfn(folio));
+		}
+	}
+}
+
+
+/* Return the hotness of the specific folio  */
 static int hca_scops_folio_hotness(struct folio *folio)
 {
-	/* TOOD: Fetch this value from the hca activity region */
-	unsigned long pfn, pfn_start;
-	off_t entry_off;
-	struct hca_entry *entry;
+	struct hca_entry *folio_hca = folio_hca_entry(folio);
+	struct engine_config *engine = &cconfig.engine[0];
+	u64 hotness = 0, treshhold;
 
-	/* if the hca engine is not enabled */
-	if (!cconfig.enable)
+	if (!folio_hca) {
+		WARN_ON_ONCE(1);
+		return 0;
+	}
+
+	if (!engine->enable)
 		return 0;
 
-	/* Calculate the PFN relative to start of the monitor area */
-	pfn_start = cconfig.engine[0].monitor_base << PAGE_SHIFT;
-	pfn = folio_pfn(folio);
+	/* The absolute hotness metric */
+	hotness = unpack_access_count(folio_hca->prev_count) +
+		unpack_access_count(folio_hca->count) / (folio_hca->age + 1);
 
-	/* Minor sanity check */
-	BUG_ON(pfn_start > pfn);
-	entry_off = (pfn - pfn_start);
-	entry = &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
+	/* Update state with 50% probablity */
+	/* Todo: this is better done in an async context */
+	if (prandom_u32_max(100) >= 50) {
+		update_engine_stats(&cconfig.engine[0], folio, hotness);
+	}
 
-	return hca_score(entry);
+	treshhold = (engine->stats.max_hotness  - engine->stats.min_hotness) >> 1;
+
+	return (hotness >= treshhold) ? 1 : -1;
 }
-
-int hca_scops_enable_monitoring(int nid, bool enabled)
-{
-	int rc;
-	/* TODO: Check for specific nid -> chip -> enging */
-	mutex_lock(&hca_mutex);
-
-	/* Check if not already enabled or disabled */
-	if (!cconfig.enable && enabled)
-		rc = hca_chip_setup();
-	else if (cconfig.enable && !enabled)
-		rc = hca_chip_reset();
-
-	if (!rc)
-		cconfig.enable = enabled;
-
-	mutex_unlock(&hca_mutex);
-
-	return rc;
-}
-
-int hca_scops_monitoring_enabled(int nid)
-{
-	/* TODO: Check for specific nid -> chip -> enging */
-	return READ_ONCE(cconfig.enable);
-}
-
 
 static struct vmscan_ops hca_scops = {
 	/* Return number of references for a single folio */
 	.folio_referenced = hca_scops_folio_referenced,
 	.folio_test_clear_referenced = hca_scops_folio_test_clear_referenced,
 	.folio_hotness = &hca_scops_folio_hotness,
-	.enable_monitoring =  &hca_scops_enable_monitoring,
-	.monitoring_enabled = &hca_scops_monitoring_enabled,
-
 };
 
 struct vmscan_ops *arch_vmscan_ops(int nid)
@@ -689,7 +716,8 @@ struct vmscan_ops *arch_vmscan_ops(int nid)
 		return NULL;
 }
 
-static bool hca_enabled = false;
+/* Enable hca on boot ? */
+static bool hca_enabled = true;
 
 static int parse_hca_param(char *arg)
 {
