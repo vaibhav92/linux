@@ -660,7 +660,7 @@ static void update_engine_stats(struct engine_config *engine, struct folio *foli
 
 	/* TODO: handle possible race */
 	/* Update the stats */
-	if (hotness < current_hotness) {
+	if (hotness < current_hotness || !current_hotness) {
 		success = (cmpxchg64(&stats->min_hotness,
 				     current_hotness, hotness) == current_hotness);
 		if (success) {
