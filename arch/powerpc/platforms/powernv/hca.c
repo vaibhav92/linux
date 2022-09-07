@@ -701,8 +701,6 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	u64 hotness = 0, current_hotness, treshhold, max_hotness = 0, min_hotness = 0;
 	int index;
 
-	u64 max_hotness
-
 	if (!folio_hca) {
 		WARN_ON_ONCE(1);
 		return 0;
