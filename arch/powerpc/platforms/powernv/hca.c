@@ -68,7 +68,7 @@ struct hca_entry {
 static struct chip_config cconfig;
 static DEFINE_MUTEX(hca_mutex);
 
-static int scan_span __read_mostly = 10;
+static ulong scan_span __read_mostly = 10;
 
 static int hca_engine_setup(unsigned int engine);
 static int hca_engine_reset(unsigned int engine);
@@ -687,8 +687,8 @@ static u64 hotness_score(struct hca_entry * entry) {
 	u64 hotness;
 
 	/* The absolute hotness metric */
-	hotness = unpack_access_count(folio_hca->prev_count) +
-		unpack_access_count(folio_hca->count) / (folio_hca->age + 1);
+	hotness = unpack_access_count(entry->prev_count) +
+		unpack_access_count(entry->count) / (entry->age + 1);
 
 	return hotness;
 }
@@ -725,7 +725,7 @@ static int hca_scops_folio_hotness(struct folio *folio)
 		if (current_hotness > max_hotness)
 			max_hotness = current_hotness;
 
-		if (current_hotness < min_hotness | !min_hotness)
+		if ((current_hotness < min_hotness) || !min_hotness)
 			min_hotness = current_hotness;
 	}
 
