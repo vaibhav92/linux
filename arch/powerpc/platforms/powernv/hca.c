@@ -699,7 +699,6 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	struct hca_entry *folio_hca = folio_hca_entry(folio);
 	struct engine_config *engine = &cconfig.engine[0];
 	u64 hotness = 0, current_hotness, treshhold, max_hotness = 0, min_hotness = 0;
-	int index;
 
 	if (!folio_hca) {
 		WARN_ON_ONCE(1);
