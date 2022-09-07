@@ -68,6 +68,8 @@ struct hca_entry {
 static struct chip_config cconfig;
 static DEFINE_MUTEX(hca_mutex);
 
+static int scan_span __read_mostly = 10;
+
 static int hca_engine_setup(unsigned int engine);
 static int hca_engine_reset(unsigned int engine);
 static int hca_counter_base_init(unsigned int engine);
@@ -533,6 +535,15 @@ static void hca_engine_config_debugfs_init(unsigned int engine)
 			     &econfig->stats.min_hotness);
 	debugfs_create_ulong("min-hotness-pfn", 0400, econfig->root,
 			   &econfig->stats.min_hotness_pfn);
+
+	debugfs_create_ulong("scan-span", 0600, econfig->root,
+			     &scan_span);
+
+}
+
+static struct hca_entry *hca_entry(off_t entry_off)
+{
+	return &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
 }
 
 static struct hca_entry * folio_hca_entry(struct folio *folio)
@@ -558,8 +569,9 @@ static struct hca_entry * folio_hca_entry(struct folio *folio)
 	if (entry_off * sizeof (struct hca_entry) > econfig->monitor_size)
 		return NULL;
 
-	return &((struct hca_entry *)__va(cconfig.engine[0].counter_base))[entry_off];
+	return hca_entry(entry_off);
 }
+
 
 static void hca_engine_config_debugfs_free(unsigned int engine)
 {
@@ -671,12 +683,25 @@ static void update_engine_stats(struct engine_config *engine, struct folio *foli
 }
 
 
+static u64 hotness_score(struct hca_entry * entry) {
+	u64 hotness;
+
+	/* The absolute hotness metric */
+	hotness = unpack_access_count(folio_hca->prev_count) +
+		unpack_access_count(folio_hca->count) / (folio_hca->age + 1);
+
+	return hotness;
+}
+
 /* Return the hotness of the specific folio  */
 static int hca_scops_folio_hotness(struct folio *folio)
 {
 	struct hca_entry *folio_hca = folio_hca_entry(folio);
 	struct engine_config *engine = &cconfig.engine[0];
-	u64 hotness = 0, treshhold;
+	u64 hotness = 0, current_hotness, treshhold, max_hotness = 0, min_hotness = 0;
+	int index;
+
+	u64 max_hotness
 
 	if (!folio_hca) {
 		WARN_ON_ONCE(1);
@@ -686,17 +711,35 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	if (!engine->enable)
 		return 0;
 
-	/* The absolute hotness metric */
-	hotness = unpack_access_count(folio_hca->prev_count) +
-		unpack_access_count(folio_hca->count) / (folio_hca->age + 1);
+	hotness = hotness_score(folio_hca);
 
-	/* Update state with 50% probablity */
+	/* Look around 'scan_span' number of pfns randomly selected */
+	for (int index = 0; index < scan_span; index++) {
+		unsigned long pfn =prandom_u32_max((u32)
+						   (engine->monitor_size >> PAGE_SHIFT));
+		struct hca_entry *entry = hca_entry(pfn);
+		WARN_ON(!entry);
+		if (!entry)
+			continue;
+		current_hotness = hotness_score(entry);
+		if (current_hotness > max_hotness)
+			max_hotness = current_hotness;
+
+		if (current_hotness < min_hotness | !min_hotness)
+			min_hotness = current_hotness;
+	}
+
+	engine->stats.max_hotness =  max_hotness;
+	engine->stats.min_hotness =  min_hotness;
+
+	/* Update stat with 50% probablity */
 	/* Todo: this is better done in an async context */
-	if (prandom_u32_max(100) >= 50) {
+	/* Dead code for now as max(100) wont give a value beyond 99*/
+	if (prandom_u32_max(100) >= 100) {
 		update_engine_stats(&cconfig.engine[0], folio, hotness);
 	}
 
-	treshhold = (engine->stats.max_hotness  - engine->stats.min_hotness) >> 1;
+	treshhold = (max_hotness  - min_hotness) >> 1;
 
 	return (hotness >= treshhold) ? 1 : -1;
 }
