@@ -29,6 +29,9 @@ struct hca_engine_stats {
         unsigned long  max_hotness_pfn;
 	unsigned long min_hotness_pfn;
 
+	u64 next_span_scan;
+
+
 	struct delayed_work scan_work;
 };
 
@@ -54,6 +57,7 @@ struct chip_config {
 		struct dentry *root;
 		struct hca_engine_stats stats;
 	} engine[HCA_ENGINES_PER_CHIP];
+	
 };
 
 struct hca_entry {
@@ -65,10 +69,12 @@ struct hca_entry {
 } __packed;
 
 
-static struct chip_config cconfig;
+static struct chip_config cconfig = {0};
 static DEFINE_MUTEX(hca_mutex);
 
 static ulong scan_span __read_mostly = 10;
+static ulong scan_ttl __read_mostly = 60 * HZ;
+
 
 static int hca_engine_setup(unsigned int engine);
 static int hca_engine_reset(unsigned int engine);
@@ -187,6 +193,7 @@ static int hca_engine_reset(unsigned int engine)
 	econfig->stats.min_hotness = 0;
 	econfig->stats.max_hotness_pfn = 0;
 	econfig->stats.min_hotness_pfn = 0;
+	econfig->stats.next_span_scan = 0;
 
 	INIT_DEFERRABLE_WORK(&econfig->stats.scan_work, hca_scan_activity_area);
 	return 0;
@@ -224,6 +231,7 @@ static int hca_chip_setup(void)
 		if (rc != OPAL_SUCCESS) {
 			opal_hca_chip_reset(chip);
 			if (rc == OPAL_PARAMETER)
+
 				return -EINVAL;
 			return -EIO;
 		}
@@ -539,6 +547,8 @@ static void hca_engine_config_debugfs_init(unsigned int engine)
 	debugfs_create_ulong("scan-span", 0600, econfig->root,
 			     &scan_span);
 
+	debugfs_create_ulong("scan-ttl", 0600, econfig->root,
+			     &scan_ttl);
 }
 
 static struct hca_entry *hca_entry(off_t entry_off)
@@ -711,23 +721,26 @@ static int hca_scops_folio_hotness(struct folio *folio)
 	hotness = hotness_score(folio_hca);
 
 	/* Look around 'scan_span' number of pfns randomly selected */
-	for (int index = 0; index < scan_span; index++) {
-		unsigned long pfn =prandom_u32_max((u32)
-						   (engine->monitor_size >> PAGE_SHIFT));
-		struct hca_entry *entry = hca_entry(pfn);
-		WARN_ON(!entry);
-		if (!entry)
-			continue;
-		current_hotness = hotness_score(entry);
-		if (current_hotness > max_hotness)
-			max_hotness = current_hotness;
+	if (time_is_after_jiffies(engine->stats.next_span_scan)) {
+		for (int index = 0; index < scan_span; index++) {
+			unsigned long pfn =prandom_u32_max((u32)
+							   (engine->monitor_size >> PAGE_SHIFT));
+			struct hca_entry *entry = hca_entry(pfn);
+			WARN_ON(!entry);
+			if (!entry)
+				continue;
+			current_hotness = hotness_score(entry);
+			if (current_hotness > max_hotness)
+				max_hotness = current_hotness;
 
-		if ((current_hotness < min_hotness) || !min_hotness)
-			min_hotness = current_hotness;
+			if ((current_hotness < min_hotness) || !min_hotness)
+				min_hotness = current_hotness;
+		}
+
+		engine->stats.next_span_scan = jiffies + span_ttl;
+		engine->stats.max_hotness =  max_hotness;
+		engine->stats.min_hotness =  min_hotness;
 	}
-
-	engine->stats.max_hotness =  max_hotness;
-	engine->stats.min_hotness =  min_hotness;
 
 	/* Update stat with 50% probablity */
 	/* Todo: this is better done in an async context */
