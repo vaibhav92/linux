@@ -3,6 +3,8 @@
 /*
  * Privileged (non-hypervisor) host registers to save.
  */
+#include "asm/guest-state-buffer.h"
+
 struct p9_host_os_sprs {
 	unsigned long iamr;
 	unsigned long amr;
@@ -51,60 +53,64 @@ void accumulate_time(struct kvm_vcpu *vcpu, struct kvmhv_tb_accumulator *next);
 #define end_timing(vcpu) do {} while (0)
 #endif
 
-#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_SET(reg, size)			\
+#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_SET(reg, size, iden)		\
 static inline void kvmppc_set_##reg ##_hv(struct kvm_vcpu *vcpu, u##size val)	\
 {									\
 	vcpu->arch.reg = val;						\
+	kvmhv_nestedv2_mark_dirty(vcpu, iden);				\
 }
 
-#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_GET(reg, size)			\
+#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_GET(reg, size, iden)		\
 static inline u##size kvmppc_get_##reg ##_hv(struct kvm_vcpu *vcpu)	\
 {									\
+	kvmhv_nestedv2_cached_reload(vcpu, iden);			\
 	return vcpu->arch.reg;						\
 }
 
-#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(reg, size)			\
-	KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_SET(reg, size)			\
-	KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_GET(reg, size)			\
+#define KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(reg, size, iden)			\
+	KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_SET(reg, size, iden)		\
+	KVMPPC_BOOK3S_HV_VCPU_ACCESSOR_GET(reg, size, iden)		\
 
-#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_SET(reg, size)		\
+#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_SET(reg, size, iden)	\
 static inline void kvmppc_set_##reg ##_hv(struct kvm_vcpu *vcpu, int i, u##size val)	\
 {									\
 	vcpu->arch.reg[i] = val;					\
+	kvmhv_nestedv2_mark_dirty(vcpu, iden(i));			\
 }
 
-#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_GET(reg, size)		\
+#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_GET(reg, size, iden)	\
 static inline u##size kvmppc_get_##reg ##_hv(struct kvm_vcpu *vcpu, int i)	\
 {									\
+	WARN_ON(kvmhv_nestedv2_cached_reload(vcpu, iden(i)) < 0);	\
 	return vcpu->arch.reg[i];					\
 }
 
-#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(reg, size)			\
-	KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_SET(reg, size)		\
-	KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_GET(reg, size)		\
+#define KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(reg, size, iden)		\
+	KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_SET(reg, size, iden)	\
+	KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR_GET(reg, size, iden)	\
 
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(mmcra, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(hfscr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(fscr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dscr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(purr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(spurr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(amr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(uamor, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(siar, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(sdar, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(iamr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawr0, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawr1, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawrx0, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawrx1, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ciabr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(wort, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ppr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ctrl, 64)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(mmcra, 64, KVMPPC_GSID_MMCRA)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(hfscr, 64, KVMPPC_GSID_HFSCR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(fscr, 64, KVMPPC_GSID_FSCR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dscr, 64, KVMPPC_GSID_DSCR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(purr, 64, KVMPPC_GSID_PURR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(spurr, 64, KVMPPC_GSID_SPURR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(amr, 64, KVMPPC_GSID_AMR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(uamor, 64, KVMPPC_GSID_UAMOR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(siar, 64, KVMPPC_GSID_SIAR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(sdar, 64, KVMPPC_GSID_SDAR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(iamr, 64, KVMPPC_GSID_IAMR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawr0, 64, KVMPPC_GSID_DAWR0)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawr1, 64, KVMPPC_GSID_DAWR1)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawrx0, 64, KVMPPC_GSID_DAWRX0)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(dawrx1, 64, KVMPPC_GSID_DAWRX1)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ciabr, 64, KVMPPC_GSID_CIABR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(wort, 64, KVMPPC_GSID_WORT)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ppr, 64, KVMPPC_GSID_PPR)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(ctrl, 64, KVMPPC_GSID_CTRL);
 
-KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(mmcr, 64)
-KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(sier, 64)
-KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(pmc, 32)
+KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(mmcr, 64, KVMPPC_GSID_MMCR)
+KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(sier, 64, KVMPPC_GSID_SIER)
+KVMPPC_BOOK3S_HV_VCPU_ARRAY_ACCESSOR(pmc, 32, KVMPPC_GSID_PMC)
 
-KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(pspb, 32)
+KVMPPC_BOOK3S_HV_VCPU_ACCESSOR(pspb, 32, KVMPPC_GSID_PSPB)
