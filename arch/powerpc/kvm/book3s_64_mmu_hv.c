@@ -121,7 +121,7 @@ void kvmppc_set_hpt(struct kvm *kvm, struct kvm_hpt_info *info)
 	kvm->arch.sdr1 = __pa(info->virt) | (info->order - 18);
 
 	pr_debug("KVM guest htab at %lx (order %ld), LPID %x\n",
-		 info->virt, (long)info->order, kvm->arch.lpid);
+		 info->virt, (long)info->order, (unsigned int)kvm->arch.lpid);
 }
 
 int kvmppc_alloc_reset_hpt(struct kvm *kvm, int order)
