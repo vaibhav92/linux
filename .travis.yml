@@ -1,143 +1,146 @@
----
 arch: ppc64le
 os: linux
-dist: jammy 
-
+dist: jammy
 language: shell
-
+notifications:
+  email:
+    recipients:
+    - amit.machhiwal@ibm.com
+    - vajain21@in.ibm.com
+    on_success: always
+    on_failure: always
+  slack:
+    secure: UdmANBOXbkSk1DAMjlHuiV7Jg0hRbQyS5wE8V6+F89K3WwQoAHcoBqZqZskd0HytC394Pjj2aSGloMXFghPJRLCdZKUNTRelDDeNkPikHVQMkp1cv23du4z3UDKgoQD2a22CvLKEcwKNkPPAF1NFQxuxTn8nDGJIstwexJ+HtSEoFR2YTeqbY3bSedvlt29nljBoWO/HFw/J/buvXWHUgyycZSQYRMFl6BabfhAUfanwT8uBYl2tJGuimxzivj+KkxvuK+gd9y3W0bIDp7bEML28SJonL5CKmcXKd8mA2p3V+yKjX7hNmfdYwK6d8O5U5Wsxw88/eJRNCNwznndaf/nuT5/ccZnAgfpWCNVC7vRQlhQYSCUGwmscvLsin/qdN/5xONW15Flpygy+I+G3lPIK+uaxlwAp4vN6dK1l4gHS5yIyfUWr/GX+/O4+MEcNhLk+1Yj+EHgE9s3lU7FuAjDjy1OwFqSC+iwyFhbmT6NGgx4Fsz+q7gD+fp2CdVZ2Qpfm9M1qO3sUznqhc3181mdPGitaj7TdILn4T21Ysy9u3JadTXwpAfQp3+gCn5EOyK2EeWNv1Wf3op8M64QSm3LFfnM28fQZqyAZs+iy5U7Nh3caS5MsgudQnU589AUkYKI9yn/VEOwoyvArRNf7ZP+jAYtbKmZC+5j4XAYhOhg=
 env:
   global:
-    - KOP_CI_GIT_NAME="kop-ci"
-    - KOP_CI_GIT_BRANCH="${KOP_CI_GIT_BRANCH:=master}"
-    - SRC_KOP_CI="${SRC_KOP_CI:=/var/tmp/kop-ci}"
-    - KOP_CI_GIT_REPO="${KOP_CI_GIT_REPO:=https://${KOP_VAR_GIT_TOKEN}@github.ibm.com/${KOP_VAR_GIT_USERNAME}/${KOP_CI_GIT_NAME}.git}" 
-    - ARGV_MACHINE="${ARGV_MACHINE:=ltcd89-lp1.aus.stglabs.ibm.com}"
-    - ARGV_DISTRO="${ARGV_DISTRO:=rhel91}"
-    - SCRIPT="${SCRIPT:=kvmcirun.sh}"
-    - KOP_VAR_KERNEL_GIT_BRANCH="${KOP_VAR_KERNEL_GIT_BRANCH:=master}"
-    - BEAKER_JOB=""
-    - BEAKER_JOB_ID=""
-    - INDEX=0
-    - BUILDRESULT=0
-    - STEPFAILCOUNT=0
-    - KOP_FORCE_PUSH_BRANCH="${KOP_FORCE_PUSH_BRANCH:=travis-build}"
-
+  - KOP_CI_GIT_NAME="kop-ci"
+  - KOP_CI_GIT_BRANCH="${KOP_CI_GIT_BRANCH:=master}"
+  - SRC_KOP_CI="${SRC_KOP_CI:=/var/tmp/kop-ci}"
+  - KOP_CI_GIT_REPO="${KOP_CI_GIT_REPO:=https://${KOP_VAR_GIT_TOKEN}@github.ibm.com/${KOP_VAR_GIT_USERNAME}/${KOP_CI_GIT_NAME}.git}"
+  - ARGV_MACHINE="${ARGV_MACHINE:=ltcd89-lp1.aus.stglabs.ibm.com}"
+  - ARGV_DISTRO="${ARGV_DISTRO:=rhel91}"
+  - SCRIPT="${SCRIPT:=kvmcirun.sh}"
+  - KOP_VAR_KERNEL_GIT_BRANCH="${KOP_VAR_KERNEL_GIT_BRANCH:=master}"
+  - BEAKER_JOB=""
+  - BEAKER_JOB_ID=""
+  - INDEX=0
+  - BUILDRESULT=0
+  - STEPFAILCOUNT=0
+  - KOP_FORCE_PUSH_BRANCH="${KOP_FORCE_PUSH_BRANCH:=travis-build}"
 sudo: required
-
 git:
-   depth: 1
-
+  depth: 1
 addons:
   apt:
     update: true
     packages:
-      - build-essential
-      - python3
-      - python3-dev
-      - python3-pip
-      - libxml2
-      - libxml2-dev
-      - libxslt-dev
-      - libkrb5-dev
-      - xmlstarlet
-
+    - build-essential
+    - python3
+    - python3-dev
+    - python3-pip
+    - libxml2
+    - libxml2-dev
+    - libxslt-dev
+    - libkrb5-dev
+    - xmlstarlet
 before_script:
-  - |
-    echo -e "kop-ci-> GIT Username -> ${KOP_VAR_GIT_USERNAME}"
-    if [ "${TRAVIS_PULL_REQUEST}" != "false" ]; then
-      KOP_VAR_KERNEL_GIT_BRANCH="${KOP_FORCE_PUSH_BRANCH}"
-      echo -e "kop-ci-> Build triggered on a pull request."
-      echo "Changing the path to -> ${TRAVIS_BUILD_DIR}"
-      pushd ${TRAVIS_BUILD_DIR}
-      git remote add "travis-repo" git@github.ibm.com:kvm-on-powervm/linux.git
-      echo "Force pushing the branch to -> ${KOP_FORCE_PUSH_BRANCH}"
-      git push "travis-repo" HEAD:refs/heads/"${KOP_FORCE_PUSH_BRANCH}" -f || return 1
-      popd
-      echo -e "kop-ci-> GIT branch for the build: ${KOP_VAR_KERNEL_GIT_BRANCH}"
-      echo -e "kop-ci-> Travis PR SHA -> ${TRAVIS_PULL_REQUEST_SHA}"
-    else
-      echo -e "kop-ci-> GIT branch for the build -> ${KOP_VAR_KERNEL_GIT_BRANCH}"
-    fi
-  - |
-    python3 -m pip install --upgrade pip
-    pip install beaker-client
-  - |
-    echo -e "kop-ci-> Creating the Beaker config directory"
-    mkdir -p ~/.beaker_client
-    echo -e "kop-ci-> Creating Beaker config file..."
-    echo "HUB_URL = \"https://beaker.linux.ibm.com\"" >> ~/.beaker_client/config
-    echo "AUTH_METHOD = \"password\"" >> ~/.beaker_client/config
-    echo "USERNAME = \"${BKR_USERNAME}\"" >> ~/.beaker_client/config
-    echo "PASSWORD = \"${BKR_PASSWD}\"" >> ~/.beaker_client/config
-    echo "SSL_VERIFY = False" >> ~/.beaker_client/config
-  - |
-    git clone -v --branch ${KOP_CI_GIT_BRANCH} --single-branch --depth 1 --no-tags ${KOP_CI_GIT_REPO} ${SRC_KOP_CI}
-    pushd ${SRC_KOP_CI}
-    chmod +x ${SCRIPT}
-    echo "Triggering a Beaker job now..."
-    BEAKER_JOB=$(./${SCRIPT} -a ppc64le -d ${ARGV_DISTRO} -m ${ARGV_MACHINE} -w "KVM CI on ppc64le" -b no)
-    echo "${BEAKER_JOB}"
-    BEAKER_JOB_ID=$(echo $BEAKER_JOB | tail -n1 | grep -oP 'J:[0-9]*')
-    if [ -n "${BEAKER_JOB_ID}" ]; then
-      echo -e "A Beaker job has successfully been triggered. Continuing..."
-    else
-      echo -e "The Beaker Job could not be triggered. Cannot continue with the build..."
-      return 1
-    fi
-  - echo "Beaker Job ID -> ${BEAKER_JOB_ID}"
-
+- |
+  echo -e "kop-ci-> GIT Username -> ${KOP_VAR_GIT_USERNAME}"
+  if [ "${TRAVIS_PULL_REQUEST}" != "false" ]; then
+    KOP_VAR_KERNEL_GIT_BRANCH="${KOP_FORCE_PUSH_BRANCH}"
+    echo -e "kop-ci-> Build triggered on a pull request."
+    echo "Changing the path to -> ${TRAVIS_BUILD_DIR}"
+    pushd ${TRAVIS_BUILD_DIR}
+    git remote add "travis-repo" git@github.ibm.com:kvm-on-powervm/linux.git
+    echo "Force pushing the branch to -> ${KOP_FORCE_PUSH_BRANCH}"
+    git push "travis-repo" HEAD:refs/heads/"${KOP_FORCE_PUSH_BRANCH}" -f || return 1
+    popd
+    echo -e "kop-ci-> GIT branch for the build: ${KOP_VAR_KERNEL_GIT_BRANCH}"
+    echo -e "kop-ci-> Travis PR SHA -> ${TRAVIS_PULL_REQUEST_SHA}"
+  else
+    echo -e "kop-ci-> GIT branch for the build -> ${KOP_VAR_KERNEL_GIT_BRANCH}"
+  fi
+- |
+  python3 -m pip install --upgrade pip
+  pip install beaker-client
+- |
+  echo -e "kop-ci-> Creating the Beaker config directory"
+  mkdir -p ~/.beaker_client
+  echo -e "kop-ci-> Creating Beaker config file..."
+  echo "HUB_URL = \"https://beaker.linux.ibm.com\"" >> ~/.beaker_client/config
+  echo "AUTH_METHOD = \"password\"" >> ~/.beaker_client/config
+  echo "USERNAME = \"${BKR_USERNAME}\"" >> ~/.beaker_client/config
+  echo "PASSWORD = \"${BKR_PASSWD}\"" >> ~/.beaker_client/config
+  echo "SSL_VERIFY = False" >> ~/.beaker_client/config
+- |
+  git clone -v --branch ${KOP_CI_GIT_BRANCH} --single-branch --depth 1 --no-tags ${KOP_CI_GIT_REPO} ${SRC_KOP_CI}
+  pushd ${SRC_KOP_CI}
+  chmod +x ${SCRIPT}
+  echo "Triggering a Beaker job now..."
+  BEAKER_JOB=$(./${SCRIPT} -a ppc64le -d ${ARGV_DISTRO} -m ${ARGV_MACHINE} -w "KVM CI on ppc64le" -b no)
+  echo "${BEAKER_JOB}"
+  BEAKER_JOB_ID=$(echo $BEAKER_JOB | tail -n1 | grep -oP 'J:[0-9]*')
+  if [ -n "${BEAKER_JOB_ID}" ]; then
+    echo -e "A Beaker job has successfully been triggered. Continuing..."
+  else
+    echo -e "The Beaker Job could not be triggered. Cannot continue with the build..."
+    return 1
+  fi
+- echo "Beaker Job ID -> ${BEAKER_JOB_ID}"
 script:
-  - |
-    iter=0
-    while true;
-    do
-      CMD_TASK_STATUS=$(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -c "string(/job/recipeSet/recipe/task[@name='/distribution/command']/@status)")
-      if [ "${CMD_TASK_STATUS}" = "Completed" ]; then
-        echo -e "The /distribution/command task has completed. Results will be displayed shortly..."
-        break
-      else
-        let iter++
-        echo -e "The /distribution/command task is still running. Waiting for 5 minutes... Iteration -> ${iter}"
-        sleep 300
+- |
+  iter=0
+  while true;
+  do
+    CMD_TASK_STATUS=$(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -c "string(/job/recipeSet/recipe/task[@name='/distribution/command']/@status)")
+    if [ "${CMD_TASK_STATUS}" = "Completed" ]; then
+      echo -e "The /distribution/command task has completed. Results will be displayed shortly..."
+      break
+    else
+      let iter++
+      echo -e "The /distribution/command task is still running. Waiting for 5 minutes... Iteration -> ${iter}"
+      if [ ${iter} -eq 24 ]; then
+        echo "About to reach Travis build timeout. Killing the Beaker job now..."
+        bkr job-cancel "${BEAKER_JOB_ID}"
       fi
-    done
-    echo "Fetching the results now..."
-    echo "Printing the steps and results"
-    echo "------------------------------"
-    while IFS= read -r testpath; do
+      sleep 300
+    fi
+  done
+  echo "Fetching the results now..."
+  echo "Printing the steps and results"
+  echo "------------------------------"
+  while IFS= read -r testpath; do
+    let INDEX++
+    echo -e "$INDEX | ${testpath}"
+    if echo "${testpath}" | grep -q "Fail"
+    then
+      BUILDRESULT=1
+      let STEPFAILCOUNT++
+    fi
+  done < <(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -m "/job/recipeSet/recipe/task[@name='/distribution/command']/results/result" -v "concat(@path,' | ', @result,' |')" -nl)
+- |
+  echo "--- Results ---"
+  echo -e "Total steps executed -> ${INDEX}"
+  echo -e "Total failed steps -> ${STEPFAILCOUNT}"
+  echo ""
+  echo "======================="
+  if [ $BUILDRESULT -eq 1 ]; then
+    echo "The build has failed!!!"
+    return 1
+  else
+    echo "The build has passed..."
+  fi
+  echo "======================="
+after_success:
+- df -h
+after_failure:
+- |
+  echo "The below steps have failed:"
+  INDEX=0
+  while IFS= read -r testpath; do
+    if echo "${testpath}" | grep -q "Fail"
+    then
       let INDEX++
       echo -e "$INDEX | ${testpath}"
-      if echo "${testpath}" | grep -q "Fail"
-      then
-        BUILDRESULT=1
-        let STEPFAILCOUNT++
-      fi
-    done < <(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -m "/job/recipeSet/recipe/task[@name='/distribution/command']/results/result" -v "concat(@path,' | ', @result,' |')" -nl)
-  - |
-    echo "--- Results ---"
-    echo -e "Total steps executed -> ${INDEX}"
-    echo -e "Total failed steps -> ${STEPFAILCOUNT}"
-    echo ""
-    echo "======================="
-    if [ $BUILDRESULT -eq 1 ]; then
-      echo "The build has failed!!!"
-      return 1
-    else
-      echo "The build has passed..."
     fi
-    echo "======================="
-
-after_success:
-  - df -h
-
-after_failure:
-  - |
-    echo "The below steps have failed:"
-    INDEX=0
-    while IFS= read -r testpath; do
-      if echo "${testpath}" | grep -q "Fail"
-      then
-        let INDEX++
-        echo -e "$INDEX | ${testpath}"
-      fi
-    done < <(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -m "/job/recipeSet/recipe/task[@name='/distribution/command']/results/result" -v "concat(@path,' | ', @result,' |')" -nl)
+  done < <(bkr job-results ${BEAKER_JOB_ID} | xmlstarlet sel -t -m "/job/recipeSet/recipe/task[@name='/distribution/command']/results/result" -v "concat(@path,' | ', @result,' |')" -nl)
