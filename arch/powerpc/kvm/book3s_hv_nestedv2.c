@@ -895,31 +895,44 @@ static void kvmhv_nestedv2_host_free(struct kvm_vcpu *vcpu,
 
 int __kvmhv_nestedv2_reload_ptregs(struct kvm_vcpu *vcpu, struct pt_regs *regs)
 {
-	int rc;
+	struct kvmhv_nestedv2_io *io;
+	struct kvmppc_gs_bitmap *valids;
+	struct kvmppc_gs_buff *gsb;
+	struct kvmppc_gs_msg gsm;
+	int rc = 0;
+
+
+	io = &vcpu->arch.nestedv2_io;
+	valids = &io->valids;
+
+	gsb = io->vcpu_run_input;
+	kvmppc_gsm_init(&gsm, &vcpu_message_ops, vcpu, 0);
 
 	for (int i = 0; i < 32; i++) {
-		rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_GPR(i));
-		if (rc < 0)
-			return rc;
+		if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_GPR(i)))
+			kvmppc_gsm_include(&gsm, KVMPPC_GSID_GPR(i));
 	}
 
-	rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_CR);
-	if (rc < 0)
-		return rc;
-	rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_XER);
-	if (rc < 0)
-		return rc;
-	rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_CTR);
-	if (rc < 0)
-		return rc;
-	rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_LR);
-	if (rc < 0)
-		return rc;
-	rc = kvmhv_nestedv2_cached_reload(vcpu, KVMPPC_GSID_NIA);
-	if (rc < 0)
-		return rc;
+	if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_CR))
+		kvmppc_gsm_include(&gsm, KVMPPC_GSID_CR);
 
-	return 0;
+	if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_XER))
+		kvmppc_gsm_include(&gsm, KVMPPC_GSID_XER);
+
+	if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_CTR))
+		kvmppc_gsm_include(&gsm, KVMPPC_GSID_CTR);
+
+	if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_LR))
+		kvmppc_gsm_include(&gsm, KVMPPC_GSID_LR);
+
+	if (!kvmppc_gsbm_test(valids, KVMPPC_GSID_NIA))
+		kvmppc_gsm_include(&gsm, KVMPPC_GSID_NIA);
+
+	rc = kvmppc_gsb_receive_data(gsb, &gsm);
+	if (rc < 0)
+		pr_err("KVM-NESTEDv2: couldn't reload ptregs\n");
+
+	return rc;
 }
 EXPORT_SYMBOL_GPL(__kvmhv_nestedv2_reload_ptregs);
 
