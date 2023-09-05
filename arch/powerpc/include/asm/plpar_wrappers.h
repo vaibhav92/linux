@@ -512,7 +512,16 @@ static inline long plpar_guest_set_capabilities(unsigned long flags,
 	unsigned long retbuf[PLPAR_HCALL_BUFSIZE];
 	long rc;
 
-	rc = plpar_hcall(H_GUEST_SET_CAPABILITIES, retbuf, flags, capabilities);
+	do {
+		rc = plpar_hcall(H_GUEST_SET_CAPABILITIES, retbuf, flags, capabilities);
+		if (rc == H_BUSY)
+			cond_resched();
+
+		if (H_IS_LONG_BUSY(rc)) {
+			msleep(get_longbusy_msecs(rc));
+			rc = H_BUSY;
+		}
+	} while (rc == H_BUSY);
 
 	return rc;
 }
@@ -523,7 +532,17 @@ static inline long plpar_guest_get_capabilities(unsigned long flags,
 	unsigned long retbuf[PLPAR_HCALL_BUFSIZE];
 	long rc;
 
-	rc = plpar_hcall(H_GUEST_GET_CAPABILITIES, retbuf, flags);
+	do {
+		rc = plpar_hcall(H_GUEST_GET_CAPABILITIES, retbuf, flags);
+		if (rc == H_BUSY)
+			cond_resched();
+
+		if (H_IS_LONG_BUSY(rc)) {
+			msleep(get_longbusy_msecs(rc));
+			rc = H_BUSY;
+		}
+	} while (rc == H_BUSY);
+
 	if (rc == H_SUCCESS)
 		*capabilities = retbuf[0];
 
