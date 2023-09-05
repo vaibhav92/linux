@@ -462,6 +462,8 @@ long kvmhv_nested_init(void)
 		return 0;
 	}
 
+	pr_info("kvm-hv: nestedv2 get capabilities hcall failed, falling back to nestedv1 (rc=%ld)\n",
+		rc);
 	/* Partition table entry is 1<<4 bytes in size, hence the 4. */
 	ptb_order = KVM_MAX_NESTED_GUESTS_SHIFT + 4;
 	/* Minimum partition table size is 1<<12 bytes */
