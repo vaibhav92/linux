@@ -503,7 +503,7 @@ void kvmhv_nested_exit(void)
 	}
 }
 
-static void kvmhv_flush_lpid(unsigned long lpid)
+void kvmhv_flush_lpid(unsigned long lpid)
 {
 	long rc;
 
