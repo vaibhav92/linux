@@ -1687,7 +1687,7 @@ static int kvmppc_handle_exit_hv(struct kvm_vcpu *vcpu,
 	{
 		int i;
 
-		if (unlikely(kvmppc_get_msr(vcpu) & MSR_PR)) {
+		if (!kvmhv_is_nestedv2() && unlikely(kvmppc_get_msr(vcpu) & MSR_PR)) {
 			/*
 			 * Guest userspace executed sc 1. This can only be
 			 * reached by the P9 path because the old path
@@ -4949,7 +4949,7 @@ static int kvmppc_vcpu_run_hv(struct kvm_vcpu *vcpu)
 		if (run->exit_reason == KVM_EXIT_PAPR_HCALL) {
 			accumulate_time(vcpu, &vcpu->arch.hcall);
 
-			if (WARN_ON_ONCE(kvmppc_get_msr(vcpu) & MSR_PR)) {
+			if (!kvmhv_is_nestedv2() && WARN_ON_ONCE(kvmppc_get_msr(vcpu) & MSR_PR)) {
 				/*
 				 * These should have been caught reflected
 				 * into the guest by now. Final sanity check:
