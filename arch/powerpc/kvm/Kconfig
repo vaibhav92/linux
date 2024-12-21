@@ -83,6 +83,7 @@ config KVM_BOOK3S_64_HV
 	depends on KVM_BOOK3S_64 && PPC_POWERNV
 	select KVM_BOOK3S_HV_POSSIBLE
 	select KVM_GENERIC_MMU_NOTIFIER
+	select KVM_BOOK3S_HV_PMU
 	select CMA
 	help
 	  Support running unmodified book3s_64 guest kernels in
@@ -170,6 +171,13 @@ config KVM_BOOK3S_HV_NESTED_PMU_WORKAROUND
 	  Selecting this option for the L0 host implements a workaround for
 	  those buggy L1s which saves the L2 state, at the cost of performance
 	  in all nested-capable guest entry/exit.
+
+config KVM_BOOK3S_HV_PMU
+	tristate "Perf events for KVM Book3s-hv"
+	depends on KVM_BOOK3S_64_HV && HV_PERF_CTRS
+	help
+
+	  If unsure, Select Y.
 
 config KVM_BOOKE_HV
 	bool
