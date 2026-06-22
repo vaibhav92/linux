@@ -4252,6 +4252,7 @@ static int kvmhv_vcpu_entry_nestedv2(struct kvm_vcpu *vcpu, u64 time_limit,
 	unsigned long msr, i;
 	int trap;
 	long rc;
+	unsigned long flags;
 
 	if (vcpu->arch.doorbell_request) {
 		vcpu->arch.doorbell_request = 0;
@@ -4271,9 +4272,13 @@ static int kvmhv_vcpu_entry_nestedv2(struct kvm_vcpu *vcpu, u64 time_limit,
 
 	kvmppc_gse_put_u64(io->vcpu_run_input, KVMPPC_GSID_LPCR, lpcr);
 
+	/* Take the read lock before running the vcpu */
+	read_lock_irqsave(&vcpu->kvm->arch.vcpu_lock, flags);
 	accumulate_time(vcpu, &vcpu->arch.in_guest);
-	rc = plpar_guest_run_vcpu(0, vcpu->kvm->arch.lpid, vcpu->vcpu_id,
-				  &trap, &i);
+	rc = plpar_guest_run_vcpu(0, vcpu->kvm->arch.lpid, vcpu->vcpu_id, &trap,
+				  &i);
+
+	read_unlock_irqrestore(&vcpu->kvm->arch.vcpu_lock, flags);
 
 	if (rc != H_SUCCESS) {
 		pr_err("KVM Guest Run VCPU hcall failed\n");

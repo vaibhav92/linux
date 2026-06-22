@@ -14,6 +14,7 @@
 #include "linux/console.h"
 #include "linux/gfp_types.h"
 #include "linux/signal.h"
+#include "linux/spinlock.h"
 #include <linux/kernel.h>
 #include <linux/kvm_host.h>
 #include <linux/pgtable.h>
@@ -824,12 +825,24 @@ int kvmhv_nestedv2_flush_vcpu(struct kvm_vcpu *vcpu, u64 time_limit)
 	struct kvmhv_nestedv2_io *io;
 	struct kvmppc_gs_buff *gsb;
 	struct kvmppc_gs_msg *gsm;
-	int rc;
+	int rc, take_lock = 0;
+	unsigned long flags;
 
 	io = &vcpu->arch.nestedv2_io;
 	gsb = io->vcpu_run_input;
 	gsm = io->vcore_message;
+
+	take_lock = kvmppc_gsm_includes(gsm, KVMPPC_GSID_VTB);
+
+	/* Take the writer lock on kvm waiting on all vcpus to exit */
+	if (take_lock)
+		write_lock_irqsave(&vcpu->kvm->arch.vcpu_lock, flags);
+
 	rc = kvmppc_gsb_send_data(gsb, gsm);
+	
+	if (take_lock)
+		write_unlock_irqrestore(&vcpu->kvm->arch.vcpu_lock, flags);
+
 	if (rc < 0) {
 		pr_err("KVM-NESTEDv2: couldn't set guest wide elements\n");
 		return rc;

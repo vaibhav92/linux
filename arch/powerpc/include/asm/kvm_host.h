@@ -332,6 +332,12 @@ struct kvm_arch {
 	struct mutex mmu_setup_lock;	/* nests inside vcpu mutexes */
 	u64 l1_ptcr;
 	struct idr kvm_nested_guest_idr;
+
+	/*
+	 * VCPUs take readers lock when running.
+	 * Take writers lock need to do something while no vcpu is running
+	*/
+	rwlock_t vcpu_lock;
 	/* This array can grow quite large, keep it at the end */
 	struct kvmppc_vcore *vcores[KVM_MAX_VCORES];
 #endif

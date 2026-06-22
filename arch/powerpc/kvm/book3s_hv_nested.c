@@ -695,6 +695,7 @@ static void kvmhv_update_ptbl_cache(struct kvm_nested_guest *gp)
 void kvmhv_vm_nested_init(struct kvm *kvm)
 {
 	idr_init(&kvm->arch.kvm_nested_guest_idr);
+	rwlock_init(&kvm->arch.vcpu_lock);
 }
 
 static struct kvm_nested_guest *__find_nested(struct kvm *kvm, int lpid)
